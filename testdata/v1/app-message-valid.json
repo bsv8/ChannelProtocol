@@ -1,0 +1,5 @@
+{
+  "description_zh": "应用 Deliver、任意 JCS content 和 ACK body",
+  "deliver": {"type": "deliver", "content": {"sdp": {"application": true}, "n": 1}},
+  "ack": {"type": "ack", "acknowledged_message_id": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"}
+}

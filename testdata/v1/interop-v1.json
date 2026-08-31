@@ -1,0 +1,54 @@
+{
+  "description_zh": "Go 与 TypeScript 固定密码学互通向量；私钥仅用于测试",
+  "test_only_private_key_a_hex": "0000000000000000000000000000000000000000000000000000000000000001",
+  "test_only_private_key_b_hex": "0000000000000000000000000000000000000000000000000000000000000002",
+  "public_key_a": "0279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+  "public_key_b": "02c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5",
+  "message_id": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+  "session_id": "CQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQk",
+  "hash": "0000000000000000000000000000000000000000000000000000000000000000",
+  "channel": "bsv8.inbox.02c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5",
+  "issued_at_ms": 1000,
+  "expires_at_ms": 2000,
+  "jcs": [
+    {"name": "key order", "input": "{\"b\":2,\"a\":1}", "expected_utf8_hex": "7b2261223a312c2262223a327d"},
+    {"name": "number boundaries", "input": "{\"numbers\":[1e21,1e20,1e-7,1e-6,0,-0,4.50,2.0]}", "expected_utf8_hex": "7b226e756d62657273223a5b31652b32312c3130303030303030303030303030303030303030302c31652d372c302e3030303030312c302c302c342e352c325d7d"},
+    {"name": "finite underflow", "input": "{\"underflow\":1e-400,\"negative\":-1e-400}", "expected_utf8_hex": "7b226e65676174697665223a302c22756e646572666c6f77223a307d"},
+    {"name": "unicode", "input": "{\"é\":\"é\",\"😀\":\"x\"}", "expected_utf8_hex": "7b22c3a9223a22c3a9222c22f09f9880223a2278227d"},
+    {"name": "UTF-16 key order", "input": "{\"\\ue000\":2,\"\\ud83d\\ude00\":1}", "expected_utf8_hex": "7b22f09f9880223a312c22ee8080223a327d"},
+    {"name": "scalar", "input": "123", "expected_utf8_hex": "313233"}
+  ],
+  "hash_request": {
+    "digest_hex": "4f46b5c306405f0c44b54fd3afef28e20314f8e6623d8e5ade74bb55f005afba",
+    "signature": "MEQCIGabSi1XKsUNqKt1BdG0VN5E__PLFJ2uK_xZ0f-c9DuXAiANQxCkNmjpe60HTJzzLT39GaV1a5oPzZU8OhjoYmCZSg"
+  },
+  "private_message": {
+    "digest_hex": "20a630e5171840cdde262fc914ad0b7bab5c06b81cd3cb7bc5ccdfa652375140",
+    "signature": "MEUCIQDrbGg6MMqz_zU9svqWkAIlOz2kI71L3be-CaabIWACngIgIFYTOQW7Ad2FtLSEi_0RkISZwr6esjF6-pgC-5PRc-U",
+    "salt": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+    "nonce": "ISEhISEhISEhISEh",
+    "plaintext": {
+      "body": {
+        "request_message_id": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+        "session_id": "CQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQk",
+        "signal": {"sdp": "v=0", "type": "offer"}
+      },
+      "expires_at_ms": 2000,
+      "issued_at_ms": 1000,
+      "message_id": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+      "protocol": "bsv8.webrtc.signal.v1",
+      "signature": "MEUCIQDrbGg6MMqz_zU9svqWkAIlOz2kI71L3be-CaabIWACngIgIFYTOQW7Ad2FtLSEi_0RkISZwr6esjF6-pgC-5PRc-U"
+    },
+    "envelope": {
+      "ciphertext": "PLcvO-N3xvQlmXrQ-wUFssGdM7Pz_vuPwawXF3eBDpVyKnl461hiOoXnXClMfFfVfayyjYmIRCpuK0V2QyC03Y3tWHhYwKhNRWxeaepp1PifIxuCzGXuPdCsJczZJqW-zHfHekQwY9VQj2S_PzTU-YuAXWl-PUjz3rnBKVuHL4LXIj3_nxlflY4a2FOXwCqUeRlcUrwG1cn1TDmgV1jM0VphKSLl3y6fUbT-t1I4ninfyVZn6Hg0XJSRgz5Q8YR1_qiOh01_1HmVkrR8yu5XarIzBr5h_zgTps0OKhjwBkLKpsjIyN30kuNZ9tcRyDQR0O_ODSfgep1DgIF-QWNbAr5Ys-fz7SHFEOd8qVELssu6Hoqosyn9sSN_6yJyJvT903RZcemog9R4Wg5nClaV69AImPWUmFvadLYpjPE3mJpDT-sasQgnbyAvw0rLU8Bduu61pn1N4ilXC8O_qZfibf8Icsug4H6po1fkIuXvpupafVi69zrw5M_K8xjAuLvBVr0fkGA46hJuUwQ7CMyzxLywAA58fqlHGB5_X8qxn0eqlH-xMeBgNFLbzzMWudGnLNuT",
+      "envelope_version": 1,
+      "from_public_key": "0279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+      "kdf_salt": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+      "nonce": "ISEhISEhISEhISEh"
+    }
+  },
+  "invalid_error_codes": [
+    {"name": "duplicate field", "json": "{\"a\":1,\"a\":2}", "expected_code": "INVALID_JSON"},
+    {"name": "unknown public field", "json": "{\"unknown\":1}", "expected_code": "UNKNOWN_FIELD"}
+  ]
+}

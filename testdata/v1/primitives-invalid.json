@@ -1,0 +1,17 @@
+{
+  "description_zh": "公共强类型原语完整非法输入；value 与 operation 一起定义两种语言必须执行的相同审查",
+  "cases": [
+    {"name": "uppercase public key", "operation": "public_key", "value": "0279BE667EF9DCBBAC55A06295CE870B07029BFCDB2DCE28D959F2815B16F81798", "expected_code": "INVALID_PUBLIC_KEY"},
+    {"name": "invalid compressed public key point", "operation": "public_key", "value": "020000000000000000000000000000000000000000000000000000000000000000", "expected_code": "INVALID_PUBLIC_KEY"},
+    {"name": "padded message id", "operation": "message_id", "value": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=", "expected_code": "INVALID_MESSAGE_ID"},
+    {"name": "short session id", "operation": "session_id", "value": "AAAA", "expected_code": "INVALID_MESSAGE_ID"},
+    {"name": "invalid base64 message id", "operation": "message_id", "value": "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!", "expected_code": "INVALID_MESSAGE_ID"},
+    {"name": "uppercase sha256", "operation": "sha256", "value": "000000000000000000000000000000000000000000000000000000000000000A", "expected_code": "INVALID_BODY"},
+    {"name": "short sha256", "operation": "sha256", "value": "00", "expected_code": "INVALID_BODY"},
+    {"name": "zero private key", "operation": "private_key_hex", "value": "0000000000000000000000000000000000000000000000000000000000000000", "expected_code": "INVALID_PRIVATE_KEY"},
+    {"name": "private key out of range", "operation": "private_key_hex", "value": "FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEBAAEDCE6AF48A03BBFD25E8CD0364141", "expected_code": "INVALID_PRIVATE_KEY"},
+    {"name": "negative time", "operation": "unix_millis", "value": -1, "expected_code": "INVALID_TIME"},
+    {"name": "fractional time", "operation": "unix_millis", "value": 1.5, "expected_code": "INVALID_TIME"},
+    {"name": "unsafe time", "operation": "unix_millis", "value": 9007199254740992, "expected_code": "INVALID_TIME"}
+  ]
+}

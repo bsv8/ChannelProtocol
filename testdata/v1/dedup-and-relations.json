@@ -1,0 +1,104 @@
+{
+  "description_zh": "公开/私密去重键、SessionKey、Deliver/ACK 关系和内容冲突的完整输入与预期结果",
+  "test_only_private_key_a_hex": "0000000000000000000000000000000000000000000000000000000000000001",
+  "test_only_private_key_b_hex": "0000000000000000000000000000000000000000000000000000000000000002",
+  "public_key_a": "0279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+  "public_key_b": "02c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5",
+  "public_hash_request": {
+    "channel": "bsv8.hash.request.v1",
+    "from_public_key": "0279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+    "message_id": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+    "issued_at_ms": 1000,
+    "expires_at_ms": 2000,
+    "body": {
+      "hash": "0000000000000000000000000000000000000000000000000000000000000000",
+      "locators": [
+        {"kind": "webrtc-sdp"}
+      ]
+    }
+  },
+  "private_deliver": {
+    "channel": "bsv8.inbox.02c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5",
+    "from_public_key": "0279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+    "to_public_key": "02c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5",
+    "protocol": "bsv8.message.v1",
+    "message_id": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+    "issued_at_ms": 1000,
+    "expires_at_ms": 2000,
+    "body": {
+      "type": "deliver",
+      "content": {
+        "fixture": "dedup-and-relations",
+        "nested": {"value": 1}
+      }
+    }
+  },
+  "session_key": {
+    "request_message_id": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+    "offerer_public_key": "0279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+    "session_id": "CQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQk",
+    "separator": "\u0000"
+  },
+  "ack": {
+    "delivery": {
+      "from_public_key": "0279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+      "to_public_key": "02c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5",
+      "message_id": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+    },
+    "valid": {
+      "from_public_key": "02c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5",
+      "to_public_key": "0279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+      "acknowledged_message_id": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+      "expected_code": null
+    },
+    "invalid": [
+      {
+        "name": "ACK sender is not Deliver recipient",
+        "from_public_key": "0279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+        "to_public_key": "0279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+        "acknowledged_message_id": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+        "expected_code": "INVALID_RELATION"
+      },
+      {
+        "name": "ACK recipient is not Deliver sender",
+        "from_public_key": "02c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5",
+        "to_public_key": "02c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5",
+        "acknowledged_message_id": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+        "expected_code": "INVALID_RELATION"
+      },
+      {
+        "name": "ACK acknowledges another message",
+        "from_public_key": "02c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5",
+        "to_public_key": "0279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+        "acknowledged_message_id": "AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE",
+        "expected_code": "INVALID_RELATION"
+      }
+    ]
+  },
+  "conflict": {
+    "same_digest": "0000000000000000000000000000000000000000000000000000000000000000",
+    "different_digest": "1111111111111111111111111111111111111111111111111111111111111111",
+    "expected_same_code": null,
+    "expected_different_code": "MESSAGE_ID_CONFLICT"
+  },
+  "expected": {
+    "public_dedup_key": [
+      "bsv8.hash.request.v1",
+      "0279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+      "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+    ],
+    "private_dedup_key": [
+      "bsv8.message.v1",
+      "0279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+      "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+    ],
+    "session_key": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\u00000279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798\u0000CQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQk",
+    "ack_valid": true,
+    "ack_invalid": [
+      {"name": "ACK sender is not Deliver recipient", "code": "INVALID_RELATION"},
+      {"name": "ACK recipient is not Deliver sender", "code": "INVALID_RELATION"},
+      {"name": "ACK acknowledges another message", "code": "INVALID_RELATION"}
+    ],
+    "conflict_code": "MESSAGE_ID_CONFLICT"
+  }
+}

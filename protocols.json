@@ -1,0 +1,38 @@
+{
+  "registry_version": 1,
+  "description_zh": "三方频道协议文档与 Go、TypeScript 模块的一一对应注册表",
+  "protocols": [
+    {
+      "document": "docs/v1/01-Hash请求频道.md",
+      "kind": "public_channel",
+      "identifier": "bsv8.hash.request.v1",
+      "description_zh": "公开广播文件 Hash 需求",
+      "go_package": "hashrequest",
+      "typescript_export": "./hash-request"
+    },
+    {
+      "document": "docs/v1/02-私密收件箱.md",
+      "kind": "private_inbox",
+      "identifier": "bsv8.inbox.<public_key_hex>",
+      "description_zh": "按目标公钥投递端到端加密信封",
+      "go_package": "inbox",
+      "typescript_export": "./inbox"
+    },
+    {
+      "document": "docs/v1/03-WebRTC-SDP子协议.md",
+      "kind": "inbox_subprotocol",
+      "identifier": "bsv8.webrtc.signal.v1",
+      "description_zh": "WebRTC SDP 和 ICE 强类型子协议",
+      "go_package": "webrtcsignal",
+      "typescript_export": "./webrtc-signal"
+    },
+    {
+      "document": "docs/v1/04-应用消息子协议.md",
+      "kind": "inbox_subprotocol",
+      "identifier": "bsv8.message.v1",
+      "description_zh": "应用消息 Deliver 和 ACK 强类型子协议",
+      "go_package": "appmessage",
+      "typescript_export": "./app-message"
+    }
+  ]
+}

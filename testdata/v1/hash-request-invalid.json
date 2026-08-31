@@ -1,0 +1,89 @@
+{
+  "description_zh": "公开 Hash 请求完整非法输入；Go 与 TypeScript 必须逐项读取同一 json 字段并返回同一错误码",
+  "cases": [
+    {
+      "name": "wrong channel",
+      "channel": "bsv8.hash.request.v2",
+      "now_ms": 1500,
+      "json": "{\"body\":{\"hash\":\"0000000000000000000000000000000000000000000000000000000000000000\",\"locators\":[{\"kind\":\"webrtc-sdp\"}]},\"expires_at_ms\":2000,\"from_public_key\":\"0279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798\",\"issued_at_ms\":1000,\"message_id\":\"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\",\"signature\":\"MEQCIGabSi1XKsUNqKt1BdG0VN5E__PLFJ2uK_xZ0f-c9DuXAiANQxCkNmjpe60HTJzzLT39GaV1a5oPzZU8OhjoYmCZSg\"}",
+      "expected_code": "INVALID_CHANNEL"
+    },
+    {
+      "name": "unknown top-level field",
+      "channel": "bsv8.hash.request.v1",
+      "now_ms": 1500,
+      "json": "{\"body\":{\"hash\":\"0000000000000000000000000000000000000000000000000000000000000000\",\"locators\":[{\"kind\":\"webrtc-sdp\"}]},\"expires_at_ms\":2000,\"from_public_key\":\"0279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798\",\"issued_at_ms\":1000,\"message_id\":\"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\",\"signature\":\"MEQCIGabSi1XKsUNqKt1BdG0VN5E__PLFJ2uK_xZ0f-c9DuXAiANQxCkNmjpe60HTJzzLT39GaV1a5oPzZU8OhjoYmCZSg\",\"unknown\":1}",
+      "expected_code": "UNKNOWN_FIELD"
+    },
+    {
+      "name": "duplicate nested field",
+      "channel": "bsv8.hash.request.v1",
+      "now_ms": 1500,
+      "json": "{\"body\":{\"hash\":\"0000000000000000000000000000000000000000000000000000000000000000\",\"hash\":\"1111111111111111111111111111111111111111111111111111111111111111\",\"locators\":[{\"kind\":\"webrtc-sdp\"}]},\"expires_at_ms\":2000,\"from_public_key\":\"0279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798\",\"issued_at_ms\":1000,\"message_id\":\"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\",\"signature\":\"MEQCIGabSi1XKsUNqKt1BdG0VN5E__PLFJ2uK_xZ0f-c9DuXAiANQxCkNmjpe60HTJzzLT39GaV1a5oPzZU8OhjoYmCZSg\"}",
+      "expected_code": "INVALID_JSON"
+    },
+    {
+      "name": "bad DER",
+      "channel": "bsv8.hash.request.v1",
+      "now_ms": 1500,
+      "json": "{\"body\":{\"hash\":\"0000000000000000000000000000000000000000000000000000000000000000\",\"locators\":[{\"kind\":\"webrtc-sdp\"}]},\"expires_at_ms\":2000,\"from_public_key\":\"0279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798\",\"issued_at_ms\":1000,\"message_id\":\"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\",\"signature\":\"AQIDBAUGBwg\"}",
+      "expected_code": "INVALID_SIGNATURE"
+    },
+    {
+      "name": "high-S signature",
+      "channel": "bsv8.hash.request.v1",
+      "now_ms": 1500,
+      "json": "{\"body\":{\"hash\":\"0000000000000000000000000000000000000000000000000000000000000000\",\"locators\":[{\"kind\":\"webrtc-sdp\"}]},\"expires_at_ms\":2000,\"from_public_key\":\"0279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798\",\"issued_at_ms\":1000,\"message_id\":\"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\",\"signature\":\"MEUCIGabSi1XKsUNqKt1BdG0VN5E__PLFJ2uK_xZ0f-c9DuXAiEA8rzvW8mXFoRS-LNjDNLCAaEJZ3sVONKmg5hFpG3Vp_c\"}",
+      "expected_code": "INVALID_SIGNATURE"
+    },
+    {
+      "name": "signed body changed",
+      "channel": "bsv8.hash.request.v1",
+      "now_ms": 1500,
+      "json": "{\"body\":{\"hash\":\"1111111111111111111111111111111111111111111111111111111111111111\",\"locators\":[{\"kind\":\"webrtc-sdp\"}]},\"expires_at_ms\":2000,\"from_public_key\":\"0279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798\",\"issued_at_ms\":1000,\"message_id\":\"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\",\"signature\":\"MEQCIGabSi1XKsUNqKt1BdG0VN5E__PLFJ2uK_xZ0f-c9DuXAiANQxCkNmjpe60HTJzzLT39GaV1a5oPzZU8OhjoYmCZSg\"}",
+      "expected_code": "INVALID_SIGNATURE"
+    },
+    {
+      "name": "sender does not match signature",
+      "channel": "bsv8.hash.request.v1",
+      "now_ms": 1500,
+      "json": "{\"body\":{\"hash\":\"0000000000000000000000000000000000000000000000000000000000000000\",\"locators\":[{\"kind\":\"webrtc-sdp\"}]},\"expires_at_ms\":2000,\"from_public_key\":\"02c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5\",\"issued_at_ms\":1000,\"message_id\":\"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\",\"signature\":\"MEQCIGabSi1XKsUNqKt1BdG0VN5E__PLFJ2uK_xZ0f-c9DuXAiANQxCkNmjpe60HTJzzLT39GaV1a5oPzZU8OhjoYmCZSg\"}",
+      "expected_code": "INVALID_SIGNATURE"
+    },
+    {
+      "name": "lifetime too long",
+      "channel": "bsv8.hash.request.v1",
+      "now_ms": 1500,
+      "json": "{\"body\":{\"hash\":\"0000000000000000000000000000000000000000000000000000000000000000\",\"locators\":[{\"kind\":\"webrtc-sdp\"}]},\"expires_at_ms\":601001,\"from_public_key\":\"0279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798\",\"issued_at_ms\":1000,\"message_id\":\"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\",\"signature\":\"MEQCIGabSi1XKsUNqKt1BdG0VN5E__PLFJ2uK_xZ0f-c9DuXAiANQxCkNmjpe60HTJzzLT39GaV1a5oPzZU8OhjoYmCZSg\"}",
+      "expected_code": "INVALID_TIME"
+    },
+    {
+      "name": "invalid multiaddr",
+      "channel": "bsv8.hash.request.v1",
+      "now_ms": 1500,
+      "json": "{\"body\":{\"hash\":\"0000000000000000000000000000000000000000000000000000000000000000\",\"locators\":[{\"kind\":\"multiaddr\",\"address\":\"not-a-multiaddr\"}]},\"expires_at_ms\":2000,\"from_public_key\":\"0279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798\",\"issued_at_ms\":1000,\"message_id\":\"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\",\"signature\":\"MEQCIGabSi1XKsUNqKt1BdG0VN5E__PLFJ2uK_xZ0f-c9DuXAiANQxCkNmjpe60HTJzzLT39GaV1a5oPzZU8OhjoYmCZSg\"}",
+      "expected_code": "INVALID_BODY"
+    },
+    {
+      "name": "unknown nested locator field",
+      "channel": "bsv8.hash.request.v1",
+      "now_ms": 1500,
+      "json": "{\"body\":{\"hash\":\"0000000000000000000000000000000000000000000000000000000000000000\",\"locators\":[{\"kind\":\"webrtc-sdp\",\"address\":\"unexpected\"}]},\"expires_at_ms\":2000,\"from_public_key\":\"0279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798\",\"issued_at_ms\":1000,\"message_id\":\"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\",\"signature\":\"MEQCIGabSi1XKsUNqKt1BdG0VN5E__PLFJ2uK_xZ0f-c9DuXAiANQxCkNmjpe60HTJzzLT39GaV1a5oPzZU8OhjoYmCZSg\"}",
+      "expected_code": "UNKNOWN_FIELD"
+    },
+    {
+      "name": "invalid time type",
+      "channel": "bsv8.hash.request.v1",
+      "now_ms": 1500,
+      "json": "{\"body\":{\"hash\":\"0000000000000000000000000000000000000000000000000000000000000000\",\"locators\":[{\"kind\":\"webrtc-sdp\"}]},\"expires_at_ms\":2000,\"from_public_key\":\"0279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798\",\"issued_at_ms\":\"1000\",\"message_id\":\"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\",\"signature\":\"MEQCIGabSi1XKsUNqKt1BdG0VN5E__PLFJ2uK_xZ0f-c9DuXAiANQxCkNmjpe60HTJzzLT39GaV1a5oPzZU8OhjoYmCZSg\"}",
+      "expected_code": "INVALID_TIME"
+    },
+    {
+      "name": "duplicate top-level field",
+      "channel": "bsv8.hash.request.v1",
+      "now_ms": 1500,
+      "json": "{\"body\":{\"hash\":\"0000000000000000000000000000000000000000000000000000000000000000\",\"locators\":[{\"kind\":\"webrtc-sdp\"}]},\"expires_at_ms\":2000,\"from_public_key\":\"0279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798\",\"issued_at_ms\":1000,\"message_id\":\"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\",\"message_id\":\"BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB\",\"signature\":\"MEQCIGabSi1XKsUNqKt1BdG0VN5E__PLFJ2uK_xZ0f-c9DuXAiANQxCkNmjpe60HTJzzLT39GaV1a5oPzZU8OhjoYmCZSg\"}",
+      "expected_code": "INVALID_JSON"
+    }
+  ]
+}

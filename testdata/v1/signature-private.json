@@ -1,0 +1,6 @@
+{
+  "description_zh": "私密 WebRTC 消息的 JCS digest 与 RFC6979 low-S DER 签名",
+  "test_only_private_key_hex": "0000000000000000000000000000000000000000000000000000000000000001",
+  "digest_hex": "20a630e5171840cdde262fc914ad0b7bab5c06b81cd3cb7bc5ccdfa652375140",
+  "signature": "MEUCIQDrbGg6MMqz_zU9svqWkAIlOz2kI71L3be-CaabIWACngIgIFYTOQW7Ad2FtLSEi_0RkISZwr6esjF6-pgC-5PRc-U"
+}

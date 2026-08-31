@@ -1,0 +1,6 @@
+{
+  "description_zh": "公开 Hash 请求的 JCS digest 与 RFC6979 low-S DER 签名",
+  "test_only_private_key_hex": "0000000000000000000000000000000000000000000000000000000000000001",
+  "digest_hex": "4f46b5c306405f0c44b54fd3afef28e20314f8e6623d8e5ade74bb55f005afba",
+  "signature": "MEQCIGabSi1XKsUNqKt1BdG0VN5E__PLFJ2uK_xZ0f-c9DuXAiANQxCkNmjpe60HTJzzLT39GaV1a5oPzZU8OhjoYmCZSg"
+}

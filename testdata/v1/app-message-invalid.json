@@ -1,0 +1,14 @@
+{
+  "description_zh": "应用 body 完整非法输入；Go 与 TypeScript 必须逐项返回同一错误码",
+  "cases": [
+    {"name": "deliver missing content", "json": "{\"type\":\"deliver\"}", "expected_code": "INVALID_JSON"},
+    {"name": "deliver ack field", "json": "{\"type\":\"deliver\",\"content\":{},\"acknowledged_message_id\":\"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\"}", "expected_code": "UNKNOWN_FIELD"},
+    {"name": "ack content field", "json": "{\"type\":\"ack\",\"acknowledged_message_id\":\"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\",\"content\":{}}", "expected_code": "UNKNOWN_FIELD"},
+    {"name": "bad acknowledged id", "json": "{\"type\":\"ack\",\"acknowledged_message_id\":\"bad\"}", "expected_code": "INVALID_MESSAGE_ID"},
+    {"name": "duplicate nested type", "json": "{\"type\":\"deliver\",\"type\":\"ack\",\"content\":null}", "expected_code": "INVALID_JSON"},
+    {"name": "unknown message type", "json": "{\"type\":\"unknown\",\"content\":null}", "expected_code": "INVALID_BODY"},
+    {"name": "ack id is number", "json": "{\"type\":\"ack\",\"acknowledged_message_id\":1}", "expected_code": "INVALID_BODY"},
+    {"name": "root is array", "json": "[]", "expected_code": "INVALID_BODY"},
+    {"name": "deliver content duplicate nested field", "json": "{\"type\":\"deliver\",\"content\":{\"x\":1,\"x\":2}}", "expected_code": "INVALID_JSON"}
+  ]
+}

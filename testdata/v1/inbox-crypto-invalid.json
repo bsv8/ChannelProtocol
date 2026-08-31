@@ -1,0 +1,104 @@
+{
+  "description_zh": "私密信封和加密明文完整非法输入；envelope 是每个 case 的完整线上输入",
+  "cases": [
+    {
+      "name": "wrong channel",
+      "operation": "parse",
+      "channel": "bsv8.inbox.bad",
+      "envelope": {"envelope_version": 1, "from_public_key": "0279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798", "kdf_salt": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA", "nonce": "ISEhISEhISEhISEh", "ciphertext": "AA"},
+      "expected_code": "INVALID_CHANNEL"
+    },
+    {
+      "name": "wrong version",
+      "operation": "parse",
+      "channel": "bsv8.inbox.02c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5",
+      "envelope": {"envelope_version": 2, "from_public_key": "0279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798", "kdf_salt": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA", "nonce": "ISEhISEhISEhISEh", "ciphertext": "AA"},
+      "expected_code": "INVALID_ENVELOPE"
+    },
+    {
+      "name": "bad salt length",
+      "operation": "parse",
+      "channel": "bsv8.inbox.02c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5",
+      "envelope": {"envelope_version": 1, "from_public_key": "0279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798", "kdf_salt": "AA", "nonce": "ISEhISEhISEhISEh", "ciphertext": "AA"},
+      "expected_code": "INVALID_ENVELOPE"
+    },
+    {
+      "name": "unknown envelope field",
+      "operation": "parse",
+      "channel": "bsv8.inbox.02c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5",
+      "envelope": {"envelope_version": 1, "from_public_key": "0279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798", "kdf_salt": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA", "nonce": "ISEhISEhISEhISEh", "ciphertext": "AA", "extra": 1},
+      "expected_code": "UNKNOWN_FIELD"
+    },
+    {
+      "name": "invalid envelope sender",
+      "operation": "parse",
+      "channel": "bsv8.inbox.02c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5",
+      "envelope": {"envelope_version": 1, "from_public_key": "020000000000000000000000000000000000000000000000000000000000000000", "kdf_salt": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA", "nonce": "ISEhISEhISEhISEh", "ciphertext": "AA"},
+      "expected_code": "INVALID_PUBLIC_KEY"
+    },
+    {
+      "name": "recipient mismatch during open",
+      "operation": "open",
+      "channel": "bsv8.inbox.02c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5",
+      "recipient_private_key_hex": "0000000000000000000000000000000000000000000000000000000000000001",
+      "envelope": {"envelope_version": 1, "from_public_key": "0279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798", "kdf_salt": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA", "nonce": "ISEhISEhISEhISEh", "ciphertext": "PLcvO-N3xvQlmXrQ-wUFssGdM7Pz_vuPwawXF3eBDpVyKnl461hiOoXnXClMfFfVfayyjYmIRCpuK0V2QyC03Y3tWHhYwKhNRWxeaepp1PifIxuCzGXuPdCsJczZJqW-zHfHekQwY9VQj2S_PzTU-YuAXWl-PUjz3rnBKVuHL4LXIj3_nxlflY4a2FOXwCqUeRlcUrwG1cn1TDmgV1jM0VphKSLl3y6fUbT-t1I4ninfyVZn6Hg0XJSRgz5Q8YR1_qiOh01_1HmVkrR8yu5XarIzBr5h_zgTps0OKhjwBkLKpsjIyN30kuNZ9tcRyDQR0O_ODSfgep1DgIF-QWNbAr5Ys-fz7SHFEOd8qVELssu6Hoqosyn9sSN_6yJyJvT903RZcemog9R4Wg5nClaV69AImPWUmFvadLYpjPE3mJpDT-sasQgnbyAvw0rLU8Bduu61pn1N4ilXC8O_qZfibf8Icsug4H6po1fkIuXvpupafVi69zrw5M_K8xjAuLvBVr0fkGA46hJuUwQ7CMyzxLywAA58fqlHGB5_X8qxn0eqlH-xMeBgNFLbzzMWudGnLNuT"},
+      "expected_code": "OPEN_FAILED"
+    },
+    {
+      "name": "tag tampered",
+      "operation": "open",
+      "channel": "bsv8.inbox.02c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5",
+      "recipient_private_key_hex": "0000000000000000000000000000000000000000000000000000000000000002",
+      "envelope": {"envelope_version": 1, "from_public_key": "0279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798", "kdf_salt": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA", "nonce": "ISEhISEhISEhISEh", "ciphertext": "PLcvO-N3xvQlmXrQ-wUFssGdM7Pz_vuPwawXF3eBDpVyKnl461hiOoXnXClMfFfVfayyjYmIRCpuK0V2QyC03Y3tWHhYwKhNRWxeaepp1PifIxuCzGXuPdCsJczZJqW-zHfHekQwY9VQj2S_PzTU-YuAXWl-PUjz3rnBKVuHL4LXIj3_nxlflY4a2FOXwCqUeRlcUrwG1cn1TDmgV1jM0VphKSLl3y6fUbT-t1I4ninfyVZn6Hg0XJSRgz5Q8YR1_qiOh01_1HmVkrR8yu5XarIzBr5h_zgTps0OKhjwBkLKpsjIyN30kuNZ9tcRyDQR0O_ODSfgep1DgIF-QWNbAr5Ys-fz7SHFEOd8qVELssu6Hoqosyn9sSN_6yJyJvT903RZcemog9R4Wg5nClaV69AImPWUmFvadLYpjPE3mJpDT-sasQgnbyAvw0rLU8Bduu61pn1N4ilXC8O_qZfibf8Icsug4H6po1fkIuXvpupafVi69zrw5M_K8xjAuLvBVr0fkGA46hJuUwQ7CMyzxLywAA58fqlHGB5_X8qxn0eqlH-xMeBgNFLbzzMWudGnLNuU"},
+      "expected_code": "OPEN_FAILED"
+    },
+    {
+      "name": "encrypted bad DER",
+      "operation": "open",
+      "channel": "bsv8.inbox.02c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5",
+      "recipient_private_key_hex": "0000000000000000000000000000000000000000000000000000000000000002",
+      "envelope": {"envelope_version":1,"from_public_key":"0279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798","kdf_salt":"ERERERERERERERERERERERERERERERERERERERERERE","nonce":"MTExMTExMTExMTEx","ciphertext":"EDDnTjhGKnrOqrPtBQdRQ_8H_O5Y3auzmTeC_6oSOymDdrxznEzVSmLG5INhhHnQVBaYQdMdyZ3tsVI8KIDMTJpByVzkolERpaq30UVM34v3EM0fAVouxK6HZSLdGjlcxWM7fe4h4StvQXDM2-umrBJwPCxZ3GDF9TB9ZHfooL_5LSFLq3xgu4gW122i2Lnh11c_kPQIWQ1pRfEpyQFXft8-_6sHMXnoJZJRM3PPuCIbRKsywzfJqoFU_rsw1MaifpCii-7xb0WEmXNY6UODXRMEV9MWcr0RZDPYytQvyuFqZld6hQaHvIm1cdWvEc7nLswlbJH-OuKO_F_nfSuz8-2lIBkXJc95OaWSBHsDzKnlwUKvsDKAL7Mncq39JNpvklW0scaGhod8mfCX-UZk-XM6yxNqNKrRB0hcBPwB3V3A4EPfVNZo5dXALYa5ZC8Cf0Bv_wESkxzRecx3NP7z"},
+      "expected_code":"OPEN_FAILED"
+    },
+    {
+      "name": "encrypted high-S",
+      "operation": "open",
+      "channel": "bsv8.inbox.02c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5",
+      "recipient_private_key_hex": "0000000000000000000000000000000000000000000000000000000000000002",
+      "envelope": {"envelope_version":1,"from_public_key":"0279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798","kdf_salt":"EhISEhISEhISEhISEhISEhISEhISEhISEhISEhISEhI","nonce":"MjIyMjIyMjIyMjIy","ciphertext":"Yl2jsl7hLs1r6k6-Gj4_aQbuynV4jdoBDVa2_REuSC6FS1eRhzIDwQc5gAmBmANZ-4uG33gTFc-ugYZFxwOPLZGRmT-v-vGQN0ts3hoNft2p97jiLTFTaFhkkX9muFbuBXHPeQmoWs7BPrsvDP6w_guKW3WOdU3qQLxp-rxpBGFy4DvylYP2_TNXvNTTKrsJqWFmBHR2Yp1l84UvrqupRahcTAynkb9dgJCg7J_N9vyd3fxs-iSMaHwz9wHu1FKE-C46EszglFQKbPZMLAdaLp96uHTfV-qdamkoRy_Ka0GApaXQBDKLXKT7Sr_GPGbqhD8Ia05CnlQJb8vk7NnDENytXpM0pGZznMIs8aiGgausoibFTQg04jGCLeewgjhC9XChthRGERPPWgoC63ZGc4aK7Atq988uI3SRkydKdDfTyE3pKnlpJNuIBPeRcERY74sXDGEajBoRsdFl8yMajlfZiusy5q3I6eMxd8MBnE6O-kul7aET7-LfqGU7N8PWeOJwSTwxSkNel4rTlJ7pNS3DkHxok1RkC_qJfm-pDrR0L6_FzUvG9oj86bI1eXygx_thog"},
+      "expected_code":"OPEN_FAILED"
+    },
+    {
+      "name": "encrypted body changed",
+      "operation": "open",
+      "channel": "bsv8.inbox.02c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5",
+      "recipient_private_key_hex": "0000000000000000000000000000000000000000000000000000000000000002",
+      "envelope": {"envelope_version":1,"from_public_key":"0279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798","kdf_salt":"ExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExM","nonce":"MzMzMzMzMzMzMzMz","ciphertext":"GUYiFAryLUKh237Pn-OsCTmZr8BkaB4IG9IeISETC_EJnaIgq2nE0UjmLy1Sc7rOZoOrpu1nxEToKCKWLXnX1D50sAnUTV0zGQb4LBkaojgTGF-RP_VQ0jEdXEE1Cat0nrNTCy8OuKfp43NOxGM6IJ-YlvdBYWLc0ZDoLa1NaSx4qKv7oL3Fa61y4xKf18dvPNIqE1K8xpc5Ohays17RYUok34iXLH83Vh9qIKEa15w1Ak7kpq7uDWCyDFbYsvj7cSZURPjyl0ft-WPUNg05P9oZkcimNWO0v74LOmUj4n7T4Wz8SpWeyH6fKSrE0VXHv49TPooUKIDwyApAPK9AaFHutscbwscoy-FQ_FqUQKrgqRpdPJYwRHzMJsbtTP5WDIJaqqIpWKoV6nmo_4PKk68JkLg3UkPn6S22w3WDzkm8nlCsuPdQK0EnxJKqLX9WY3F1CtxX9Pf_xiEJxExM8Hw9AHVCSoYnbR_LfPNKX0iHHw7NBbThnrWxCTi6g3scYKTDxoNBlClw03aivL4_F24XWsARjD-Gu4_SIH_Z84RrUZ3j7ZtF37MFwVsntugHHDTr"},
+      "expected_code":"OPEN_FAILED"
+    },
+    {
+      "name": "unknown private protocol",
+      "operation": "open_dispatch",
+      "channel": "bsv8.inbox.02c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5",
+      "recipient_private_key_hex": "0000000000000000000000000000000000000000000000000000000000000002",
+      "envelope": {"envelope_version":1,"from_public_key":"0279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798","kdf_salt":"FBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQ","nonce":"NDQ0NDQ0NDQ0NDQ0","ciphertext":"d_bMOvliJZHDm3Pp_Of7o1KOqqiqFa6Xkhc5rwhwShBTfqAjzGJPmpn74P7SDTIRResP0aG8LBAVXcm406nZVexjUhUZiYl5eFNI7bpgiK82Hxt3ZWpUi9QnhlTGNL_kboo_ixObXHyaEq2vveKeaCPxldNUQc7YAUoH23Q4HmkxWWalm6cCmmypyuHflaMC9lfkX7EAUqEIMg7XscPkZjT35evMMamzxP4_toSRa7untKjdY0RvK_QC0U4Hn94gLeHhFukoggBwJbH-X4aWOn2Q9dEPejxGMxV9QxK0Hpm5y3Qdtdrz05GmeZuWujJWU-EOuIQx0xCvEAYjcHfoogre-W--wP4k6wyWV7jset3EN_x2KXzIu3ZZaQ8w6PfQ8wdZE1l-cFMUUDSm"},
+      "expected_code":"UNSUPPORTED_PROTOCOL"
+    },
+    {
+      "name": "wrong signature scope",
+      "operation": "open",
+      "channel": "bsv8.inbox.02c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5",
+      "recipient_private_key_hex": "0000000000000000000000000000000000000000000000000000000000000002",
+      "envelope": {"envelope_version":1,"from_public_key":"0279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798","kdf_salt":"FRUVFRUVFRUVFRUVFRUVFRUVFRUVFRUVFRUVFRUVFRU","nonce":"NTU1NTU1NTU1NTU1","ciphertext":"cgHTomEmIkzDtNDXGs3k1bJrOAJkNJNQEd7FFKh4fE6uobIK9ANc3OX0-3soRPBFbvHSRynAneu3F-3Fw0rLWx9o20QotesdpnlcmZo6TkohxaVu4hD0Tru8MvrmP7N6ghwJmY_3ZJbqZKu31ZP4hjjPGxI1nq9MNKiLcgDjf7au0beZIprAjcYn2dFpPmK5-jfks-oTYC3HBaz-N--9x17oe5_NLeNlFTqOnhbmD-vZwquRBBFEh3IXjj0fV-cp7dwhzayfPNBnxeLBYvjLcyf-v9J12VRjOhUWfb9q33rq_Iur6tRKCCIUlJtyDumBe4NfrOCt4U2XFGLU4xZuunKMXnp5zdwTJXhFXtcSb3wqoakakYo2YRHxQbD6u8YP7ta5yI7oF6qjJaSwvqaMpgGEZ36uJH_kwqhPgZrGTrJPSBmGGnA-3yBnh-0nrtZLzCaO-PCtw-7-fysmudasd32pNxNfiQM9f5WuX9cdqEHl-WqcK1I6-dHMBAM_0i4bcHnRcKIbcXWbgTdQjt0kBvza-G7SneiCHOI3d7rwGqAJ-UHwIET_rrvwuKkO2pQYqfxruSPaWljoHcPrPWcXp1hKeXkZGRdwMAjnjp3WXKAZ2w"},
+      "expected_code":"OPEN_FAILED"
+    },
+    {
+      "name": "nested duplicate in encrypted plaintext",
+      "operation": "open",
+      "channel": "bsv8.inbox.02c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5",
+      "recipient_private_key_hex": "0000000000000000000000000000000000000000000000000000000000000002",
+      "envelope": {"envelope_version":1,"from_public_key":"0279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798","kdf_salt":"FhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhY","nonce":"NjY2NjY2NjY2NjY2","ciphertext":"DcihHS_VLmqsiejOfPINkN5ja8rlVfVjKVSnEX76hGS9wMUn7hDQUOKF2U-ZGCpSRAC2vJ6pJDowZMRJICog-ybPoMMfaTVPLUhaprTPS8uz0RfQReDxXmKvcItljHtgytc3gSKaJ64r7DfVmXTE3N-pLOb0d99MWRqKddvftPixaZZdxIgN6Gcx-nilt6h_QGBtE7Iat0Me5ApmEhImDCZS_pGraTzVXJcU-NUbKpBfWc_aiI6FHXbE8QS04fuR5PG1AQBcPp5CK69vRl_2TGKrJz71DfgQKv4LJHJbmREhjpScM_zxENcqMWiQhMZFAJJLBg4jp1O5AhctEgjObR0QQuG3ZYXVDCJc32E3tS_aKHMTeEwIHRGzyKD4607dCTZ2-jnzpstOEYLly6DXfRztf88zHgkHdAOOQyBp7Tp9IMi4hHVi-5a7dEi0OqbIeflUsxYkvlWeX2CDuhnJF2orYhwcetCzxI40F1w3ZUSXnYntE5E7ZBXxSiGXoEDMtMsW0k-3a4CcHKzEYl8mVPyeIJoqApWUYyJzev-tfT8EMnYBUSf8j0DN4BTwvVLSJ8M79trGH-rDILIKSFzk"},
+      "expected_code":"OPEN_FAILED"
+    }
+  ]
+}

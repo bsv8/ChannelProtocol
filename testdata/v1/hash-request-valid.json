@@ -1,0 +1,11 @@
+{
+  "description_zh": "合法公开 Hash 请求；完整规范 JSON 见 interop-v1",
+  "channel": "bsv8.hash.request.v1",
+  "expected_digest_hex": "4f46b5c306405f0c44b54fd3afef28e20314f8e6623d8e5ade74bb55f005afba",
+  "expected_signature": "MEQCIGabSi1XKsUNqKt1BdG0VN5E__PLFJ2uK_xZ0f-c9DuXAiANQxCkNmjpe60HTJzzLT39GaV1a5oPzZU8OhjoYmCZSg",
+  "multiaddr_cases": [
+    {"name": "ip4 tcp", "address": "/ip4/127.0.0.1/tcp/443"},
+    {"name": "dns4 tcp", "address": "/dns4/node.example/tcp/443"},
+    {"name": "ip6 tcp", "address": "/ip6/::1/tcp/443"}
+  ]
+}

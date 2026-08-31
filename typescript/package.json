@@ -1,0 +1,60 @@
+{
+  "name": "bsv8-channel-protocol",
+  "version": "0.1.0",
+  "description": "BSV8 三方频道协议 Go/TypeScript 对齐 SDK 的 TypeScript 实现",
+  "license": "AGPL-3.0-only",
+  "type": "module",
+  "sideEffects": false,
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/bsv8/ChannelProtocol.git",
+    "directory": "typescript"
+  },
+  "homepage": "https://github.com/bsv8/ChannelProtocol#readme",
+  "bugs": "https://github.com/bsv8/ChannelProtocol/issues",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./hash-request": {
+      "types": "./dist/hash-request/index.d.ts",
+      "import": "./dist/hash-request/index.js"
+    },
+    "./inbox": {
+      "types": "./dist/inbox/index.d.ts",
+      "import": "./dist/inbox/index.js"
+    },
+    "./webrtc-signal": {
+      "types": "./dist/webrtc-signal/index.d.ts",
+      "import": "./dist/webrtc-signal/index.js"
+    },
+    "./app-message": {
+      "types": "./dist/app-message/index.d.ts",
+      "import": "./dist/app-message/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "npm run build && node --test test/*.test.js",
+    "prepack": "npm run build"
+  },
+  "dependencies": {
+    "@multiformats/multiaddr": "^13.0.3",
+    "@noble/curves": "^1.9.7",
+    "@noble/hashes": "^1.8.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.2"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

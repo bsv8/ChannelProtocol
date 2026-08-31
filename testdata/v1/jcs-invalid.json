@@ -1,0 +1,13 @@
+{
+  "description_zh": "JCS 严格解析非法样例",
+  "cases": [
+    {"name": "duplicate", "json": "{\"a\":1,\"a\":2}", "expected_code": "INVALID_JSON"},
+    {"name": "nested duplicate", "json": "{\"outer\":{\"a\":1,\"a\":2}}", "expected_code": "INVALID_JSON"},
+    {"name": "lone high surrogate", "json": "{\"a\":\"\\ud800\"}", "expected_code": "INVALID_JSON"},
+    {"name": "lone low surrogate", "json": "{\"a\":\"\\udc00\"}", "expected_code": "INVALID_JSON"},
+    {"name": "non-finite number", "json": "{\"a\":1e400}", "expected_code": "INVALID_JSON"},
+    {"name": "trailing content", "json": "{\"a\":1}false", "expected_code": "INVALID_JSON"},
+    {"name": "leading BOM", "json": "\ufeff{\"a\":1}", "expected_code": "INVALID_JSON"},
+    {"name": "bad escape", "json": "{\"a\":\"\\x20\"}", "expected_code": "INVALID_JSON"}
+  ]
+}

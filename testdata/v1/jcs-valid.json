@@ -1,0 +1,11 @@
+{
+  "description_zh": "RFC 8785 JCS 边界：对象键、ECMAScript 数字和 Unicode",
+  "cases": [
+    {"input": "{\"b\":2,\"a\":1}", "expected_utf8_hex": "7b2261223a312c2262223a327d"},
+    {"input": "{\"numbers\":[1e21,1e20,1e-7,1e-6,0,-0,4.50,2.0]}", "expected_utf8_hex": "7b226e756d62657273223a5b31652b32312c3130303030303030303030303030303030303030302c31652d372c302e3030303030312c302c302c342e352c325d7d"},
+    {"input": "{\"underflow\":1e-400,\"negative\":-1e-400}", "expected_utf8_hex": "7b226e65676174697665223a302c22756e646572666c6f77223a307d"},
+    {"input": "{\"é\":\"é\",\"😀\":\"x\"}", "expected_utf8_hex": "7b22c3a9223a22c3a9222c22f09f9880223a2278227d"},
+    {"input": "{\"\\ue000\":2,\"\\ud83d\\ude00\":1}", "expected_utf8_hex": "7b22f09f9880223a312c22ee8080223a327d"},
+    {"input": "123", "expected_utf8_hex": "313233"}
+  ]
+}

@@ -1,0 +1,11 @@
+{
+  "description_zh": "WebRTC 四种严格互斥 signal 分支",
+  "request_message_id": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+  "session_id": "CQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQk",
+  "signals": [
+    {"type": "offer", "sdp": "v=0"},
+    {"type": "answer", "sdp": "v=0"},
+    {"type": "ice-candidate", "candidate": {"candidate": "candidate:1 1 UDP 1 192.0.2.1 9 typ host", "sdp_mid": null, "sdp_m_line_index": 0}},
+    {"type": "end-of-candidates"}
+  ]
+}
