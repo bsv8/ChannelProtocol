@@ -7,7 +7,7 @@ import * as webrtc from "../dist/webrtc-signal/index.js";
 
 const zeroHash = channels.sha256HashFromBytes(new Uint8Array(32));
 
-// 示例一：构造、签名并审查公开 Hash 请求。
+// 示例一：构造、签名并验签公开 Hash 请求。
 function hashRequestExample() {
   const privateKey = channels.generatePrivateKey();
   const publicKey = channels.publicKeyFromPrivate(privateKey);
@@ -19,8 +19,8 @@ function hashRequestExample() {
     body: { hash: zeroHash, locators: [hashrequest.newWebRTCSDPLocator()] },
   }, privateKey);
   const verified = hashrequest.parseAndVerify(channels.HASH_REQUEST_CHANNEL, hashrequest.marshal(message), 1_500);
-  hashrequest.reviewAdmission(verified, publicKey);
-  console.log("Hash 请求：签名和发布入口身份审查通过");
+  if (!hashrequest.isVerifiedHashRequest(verified)) throw new Error("Hash 请求验签结果无效");
+  console.log("Hash 请求：签名和验签通过");
 }
 
 // 示例二：签名、长期密钥加密、解密并强类型分派 WebRTC offer。
@@ -40,8 +40,8 @@ async function webRTCExample() {
     expires_at_ms: 2_000,
     body,
   }, senderPrivate);
-  const decoded = await channels.decodePrivateChannel(envelope.channel, inbox.marshalEnvelope(envelope), recipientPrivate, 1_500);
-  if (decoded.body.signal.type !== "offer") throw new Error("WebRTC body 分派类型错误");
+  const opened = await inbox.open(envelope.channel, inbox.marshalEnvelope(envelope), recipientPrivate, 1_500);
+  if (opened.body.signal.type !== "offer") throw new Error("WebRTC body 分派类型错误");
   console.log("WebRTC：长期密钥加解密和强类型分派通过");
 }
 
@@ -62,7 +62,7 @@ async function deliverAckRetryExample() {
     body: appmessage.newDeliver({ kind: "local-demo", value: 1 }),
   }, senderPrivate);
   const envelope = await inbox.sealSigned(signedDeliver, senderPrivate);
-  const received = await inbox.openAndDispatch(envelope.channel, inbox.marshalEnvelope(envelope), recipientPrivate, 1_500);
+  const received = await inbox.open(envelope.channel, inbox.marshalEnvelope(envelope), recipientPrivate, 1_500);
   const ackID = channels.newMessageID();
   const ackEnvelope = await inbox.signAndSeal({
     channel: channels.inboxChannel(senderPublic),
@@ -73,12 +73,9 @@ async function deliverAckRetryExample() {
     expires_at_ms: 2_000,
     body: appmessage.newAck(received.message_id),
   }, recipientPrivate);
-  const ack = await inbox.openAndDispatch(ackEnvelope.channel, inbox.marshalEnvelope(ackEnvelope), senderPrivate, 1_500);
+  const ack = await inbox.open(ackEnvelope.channel, inbox.marshalEnvelope(ackEnvelope), senderPrivate, 1_500);
   if (ack.body.type !== "ack") throw new Error("ACK body 分派类型错误");
-  appmessage.validateAckRelation(
-    { from_public_key: received.from_public_key, to_public_key: received.to_public_key, message_id: received.message_id },
-    { from_public_key: ack.from_public_key, to_public_key: ack.to_public_key, body: ack.body },
-  );
+  inbox.validateAckRelation(received, ack);
   await inbox.sealSigned(signedDeliver, senderPrivate);
   console.log("Deliver/ACK：可靠接收、关系校验和重新加密重试通过");
 }

@@ -84,6 +84,20 @@
       "now_ms": 1500,
       "json": "{\"body\":{\"hash\":\"0000000000000000000000000000000000000000000000000000000000000000\",\"locators\":[{\"kind\":\"webrtc-sdp\"}]},\"expires_at_ms\":2000,\"from_public_key\":\"0279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798\",\"issued_at_ms\":1000,\"message_id\":\"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\",\"message_id\":\"BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB\",\"signature\":\"MEQCIGabSi1XKsUNqKt1BdG0VN5E__PLFJ2uK_xZ0f-c9DuXAiANQxCkNmjpe60HTJzzLT39GaV1a5oPzZU8OhjoYmCZSg\"}",
       "expected_code": "INVALID_JSON"
+    },
+    {
+      "name": "issued one millisecond beyond future skew",
+      "channel": "bsv8.hash.request.v1",
+      "now_ms": 1700000000000,
+      "json": "{\"body\":{\"hash\":\"0000000000000000000000000000000000000000000000000000000000000000\",\"locators\":[{\"kind\":\"webrtc-sdp\"}]},\"expires_at_ms\":1700000660001,\"from_public_key\":\"0279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798\",\"issued_at_ms\":1700000060001,\"message_id\":\"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\",\"signature\":\"MEUCIQDwkUiVoucxVkKR09ETIxIVyPix0m3Z6FcOXE3e1WhJrwIgSZNKNwxUbGnyhQtnRHZlDDz8jtQ3UbYQ5r_2SMpnT7s\"}",
+      "expected_code": "INVALID_TIME"
+    },
+    {
+      "name": "far future issued with otherwise valid lifetime",
+      "channel": "bsv8.hash.request.v1",
+      "now_ms": 1700000000000,
+      "json": "{\"body\":{\"hash\":\"0000000000000000000000000000000000000000000000000000000000000000\",\"locators\":[{\"kind\":\"webrtc-sdp\"}]},\"expires_at_ms\":4102445400000,\"from_public_key\":\"0279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798\",\"issued_at_ms\":4102444800000,\"message_id\":\"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\",\"signature\":\"MEUCIQDPe0sqNtjKHgQITWytwaB2XpmLJhlwyY9cVUr0vWSx1wIgAfFIwr5_5BkfuCqFET9CpLaK9dwEpGyn-8E1IupuuW0\"}",
+      "expected_code": "INVALID_TIME"
     }
   ]
 }

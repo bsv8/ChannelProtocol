@@ -33,6 +33,14 @@
       "description_zh": "应用消息 Deliver 和 ACK 强类型子协议",
       "go_package": "appmessage",
       "typescript_export": "./app-message"
+    },
+    {
+      "document": "docs/v1/05-Ping-Pong子协议.md",
+      "kind": "inbox_subprotocol",
+      "identifier": "bsv8.ping.v1",
+      "description_zh": "Ping 和 Pong 私密连通性子协议",
+      "go_package": "ping",
+      "typescript_export": "./ping"
     }
   ]
 }

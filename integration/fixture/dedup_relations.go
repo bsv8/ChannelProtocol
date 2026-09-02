@@ -166,7 +166,7 @@ func buildDedupRelations(input fixture) (dedupRelationsResult, error) {
 		return dedupRelationsResult{}, err
 	}
 	publicKey := verifiedPublic.DedupKey()
-	publicDedupKey := []string{publicKey.Channel, publicKey.FromPublicKey.String(), publicKey.MessageID.String()}
+	publicDedupKey := []string{publicKey.FromPublicKey.String(), publicKey.MessageID.String()}
 
 	privateBodyValue, err := appmessage.ParseBody(fixtureValue.PrivateDeliver.Body)
 	if err != nil {
@@ -234,16 +234,12 @@ func buildDedupRelations(input fixture) (dedupRelationsResult, error) {
 		return dedupRelationsResult{}, err
 	}
 
-	delivery, err := dedupDeliveryContext(fixtureValue.Ack.Delivery)
-	if err != nil {
-		return dedupRelationsResult{}, err
-	}
-	if err := validateDedupAckCase(delivery, fixtureValue.Ack.Valid); err != nil {
+	if err := validateDedupAckCase(opened, fixtureValue.Ack.Valid, privateA, publicA, privateB, publicB); err != nil {
 		return dedupRelationsResult{}, fmt.Errorf("dedup fixture ACK valid expected success got %s", errorCode(err))
 	}
 	ackInvalid := make([]errorResult, 0, len(fixtureValue.Ack.Invalid))
 	for _, item := range fixtureValue.Ack.Invalid {
-		err := validateDedupAckCase(delivery, item)
+		err := validateDedupAckCase(opened, item, privateA, publicA, privateB, publicB)
 		code := errorCode(err)
 		expected := ""
 		if item.ExpectedCode != nil {
@@ -263,14 +259,13 @@ func buildDedupRelations(input fixture) (dedupRelationsResult, error) {
 	if err != nil {
 		return dedupRelationsResult{}, err
 	}
-	if err := validateConflictCode(appmessage.CheckDigestConflict(sameDigest, sameDigest), fixtureValue.Conflict.ExpectedSameCode, "same digest"); err != nil {
+	if err := validateConflictCode(inbox.CheckDigestConflict(sameDigest, sameDigest), fixtureValue.Conflict.ExpectedSameCode, "same digest"); err != nil {
 		return dedupRelationsResult{}, err
 	}
-	conflictErr := appmessage.CheckDigestConflict(sameDigest, differentDigest)
-	privateConflictErr := inbox.CheckDigestConflict(sameDigest, differentDigest)
+	conflictErr := inbox.CheckDigestConflict(sameDigest, differentDigest)
 	conflictCode := errorCode(conflictErr)
-	if errorCode(privateConflictErr) != fixtureValue.Conflict.ExpectedDifferentCode || conflictCode != fixtureValue.Conflict.ExpectedDifferentCode {
-		return dedupRelationsResult{}, fmt.Errorf("dedup fixture conflict expected %s got app=%s private=%s", fixtureValue.Conflict.ExpectedDifferentCode, conflictCode, errorCode(privateConflictErr))
+	if conflictCode != fixtureValue.Conflict.ExpectedDifferentCode {
+		return dedupRelationsResult{}, fmt.Errorf("dedup fixture conflict expected %s got %s", fixtureValue.Conflict.ExpectedDifferentCode, conflictCode)
 	}
 
 	actual := dedupRelationsResult{
@@ -336,23 +331,7 @@ func buildDedupHashRequest(value dedupHashRequestFixture, privateKey channels.Pr
 	}, privateKey)
 }
 
-func dedupDeliveryContext(value dedupDeliveryFixture) (appmessage.DeliveryContext, error) {
-	from, err := channels.ParsePublicKey(value.FromPublicKey)
-	if err != nil {
-		return appmessage.DeliveryContext{}, err
-	}
-	to, err := channels.ParsePublicKey(value.ToPublicKey)
-	if err != nil {
-		return appmessage.DeliveryContext{}, err
-	}
-	messageID, err := channels.ParseMessageID(value.MessageID)
-	if err != nil {
-		return appmessage.DeliveryContext{}, err
-	}
-	return appmessage.DeliveryContext{FromPublicKey: from, ToPublicKey: to, MessageID: messageID}, nil
-}
-
-func validateDedupAckCase(delivery appmessage.DeliveryContext, value dedupAckCase) error {
+func validateDedupAckCase(delivery inbox.VerifiedPrivateMessage, value dedupAckCase, privateA channels.PrivateKey, publicA channels.PublicKey, privateB channels.PrivateKey, publicB channels.PublicKey) error {
 	from, err := channels.ParsePublicKey(value.FromPublicKey)
 	if err != nil {
 		return err
@@ -361,19 +340,54 @@ func validateDedupAckCase(delivery appmessage.DeliveryContext, value dedupAckCas
 	if err != nil {
 		return err
 	}
-	messageID, err := channels.ParseMessageID(value.AcknowledgedMessageID)
+	acknowledgedMessageID, err := channels.ParseMessageID(value.AcknowledgedMessageID)
 	if err != nil {
 		return err
 	}
-	ack, err := appmessage.NewAck(messageID)
+	ack, err := appmessage.NewAck(acknowledgedMessageID)
 	if err != nil {
 		return err
 	}
-	return appmessage.ValidateAckRelation(delivery, appmessage.AckContext{
+	var senderPrivate, recipientPrivate channels.PrivateKey
+	if from.Equal(publicA) {
+		senderPrivate = privateA
+	} else if from.Equal(publicB) {
+		senderPrivate = privateB
+	} else {
+		return fmt.Errorf("ACK sender 不在 fixture 身份中")
+	}
+	if to.Equal(publicA) {
+		recipientPrivate = privateA
+	} else if to.Equal(publicB) {
+		recipientPrivate = privateB
+	} else {
+		return fmt.Errorf("ACK recipient 不在 fixture 身份中")
+	}
+	ackID, err := channels.ParseMessageID("AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE")
+	if err != nil {
+		return err
+	}
+	envelope, err := inbox.SignAndSeal(inbox.UnsignedPrivateMessage{
+		Channel:       channels.InboxChannel(to),
 		FromPublicKey: from,
-		ToPublicKey:   to,
+		Protocol:      channels.AppMessageProtocol,
+		MessageID:     ackID,
+		IssuedAtMs:    delivery.IssuedAtMs(),
+		ExpiresAtMs:   delivery.ExpiresAtMs(),
 		Body:          ack,
-	})
+	}, senderPrivate)
+	if err != nil {
+		return err
+	}
+	envelopeJSON, err := inbox.Marshal(envelope)
+	if err != nil {
+		return err
+	}
+	ackMessage, err := inbox.Open(envelope.Channel, envelopeJSON, recipientPrivate, delivery.IssuedAtMs()+500)
+	if err != nil {
+		return err
+	}
+	return inbox.ValidateAckRelation(delivery, ackMessage)
 }
 
 func validateConflictCode(err error, expected *string, label string) error {

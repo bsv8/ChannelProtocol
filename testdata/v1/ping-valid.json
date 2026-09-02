@@ -1,0 +1,5 @@
+{
+  "description_zh": "独立 Ping/Pong 私密子协议 body",
+  "ping": {"type": "ping"},
+  "pong": {"type": "pong", "ping_message_id": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"}
+}

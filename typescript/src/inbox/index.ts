@@ -1,5 +1,5 @@
 /** 私密收件箱模块，对应 02-私密收件箱.md。 */
-import { INBOX_CHANNEL_PREFIX, INBOX_ENVELOPE_VERSION, APP_MESSAGE_PROTOCOL, WEBRTC_SIGNAL_PROTOCOL } from "../registry.js";
+import { INBOX_CHANNEL_PREFIX, INBOX_ENVELOPE_VERSION, APP_MESSAGE_PROTOCOL, PING_PROTOCOL, WEBRTC_SIGNAL_PROTOCOL } from "../registry.js";
 import { ERROR_CODES, ChannelProtocolError, hasCode, protocolError } from "../internal/errors.js";
 import {
   MessageID,
@@ -31,20 +31,16 @@ import { ecdh as ecdhImported, signDigest as signDigestImported, verifyDigest as
 import { cloneAndFreeze, freezeDeep } from "../internal/immutable.js";
 import { MessageV1Body, parseBodyValue as parseAppBodyValue, validateBody as validateAppBody } from "../app-message/index.js";
 import { SessionKey, WebRTCSignalV1Body, parseBodyValue as parseWebRTCBodyValue, sessionKey, validateBody as validateWebRTCBody } from "../webrtc-signal/index.js";
+import { PingBody, PongBody, parseBodyValue as parsePingBodyValue, validateBody as validatePingBody } from "../ping/index.js";
 import type { VerifiedHashRequest } from "../hash-request/index.js";
 import { isVerifiedHashRequest } from "../hash-request/index.js";
 
 export { INBOX_CHANNEL_PREFIX, INBOX_ENVELOPE_VERSION };
 
-const verifiedPrivateMessageBrand = Symbol("bsv8.verified-private-message");
-const decodedInboxMessageBrand = Symbol("bsv8.decoded-inbox-message");
-const admissionReviewedEnvelopeBrand = Symbol("bsv8.admission-reviewed-envelope");
 const verifiedPrivateMessages = new WeakSet<object>();
-const decodedInboxMessages = new WeakSet<object>();
-const admissionReviewedEnvelopes = new WeakSet<object>();
 
 /** 私密消息可用的强类型 body 联合类型。 */
-export type PrivateBody = WebRTCSignalV1Body | MessageV1Body;
+export type PrivateBody = WebRTCSignalV1Body | MessageV1Body | PingBody | PongBody;
 
 /** V1 加密信封；字段即线上 JSON 字段，所有字节均使用无填充 base64url。 */
 export interface EncryptedEnvelopeV1 {
@@ -60,16 +56,6 @@ export interface EncryptedEnvelopeV1 {
   readonly nonce: string;
   /** ciphertext || 16-byte GCM tag。 */
   readonly ciphertext: string;
-}
-
-/** 已通过外层认证公钥检查的信封。 */
-export interface AdmissionReviewedEnvelope {
-  /** 严格解析的信封。 */
-  readonly envelope: EncryptedEnvelopeV1;
-  /** 外层已认证公钥。 */
-  readonly authenticated_public_key: PublicKey;
-  /** 仅由 reviewEnvelopeAdmission 创建的运行时品牌。 */
-  readonly [admissionReviewedEnvelopeBrand]: true;
 }
 
 /** 待签名私密消息的公共字段；protocol/body 在联合分支中保持一一对应。 */
@@ -89,7 +75,8 @@ interface UnsignedPrivateMessageFields {
 /** 待签名私密消息；protocol 与 body 是相关联的 discriminated union。 */
 export type UnsignedPrivateMessage =
   | (UnsignedPrivateMessageFields & { readonly protocol: typeof WEBRTC_SIGNAL_PROTOCOL; readonly body: WebRTCSignalV1Body })
-  | (UnsignedPrivateMessageFields & { readonly protocol: typeof APP_MESSAGE_PROTOCOL; readonly body: MessageV1Body });
+  | (UnsignedPrivateMessageFields & { readonly protocol: typeof APP_MESSAGE_PROTOCOL; readonly body: MessageV1Body })
+  | (UnsignedPrivateMessageFields & { readonly protocol: typeof PING_PROTOCOL; readonly body: PingBody | PongBody });
 
 /** 已签名私密消息；signature 只在公共消息壳添加一次。 */
 export type SignedPrivateMessage = UnsignedPrivateMessage & {
@@ -97,7 +84,7 @@ export type SignedPrivateMessage = UnsignedPrivateMessage & {
   readonly signature: Signature;
 };
 
-/** Open 的低层 raw body 结果；业务应继续调用 dispatch。 */
+/** Open 完成解密、时间、签名验证和固定协议分派后的唯一结果。 */
 export interface VerifiedPrivateMessage {
   /** 实际 inbox channel。 */
   readonly channel: string;
@@ -113,45 +100,14 @@ export interface VerifiedPrivateMessage {
   readonly issued_at_ms: number;
   /** 过期时间 Unix 毫秒。 */
   readonly expires_at_ms: number;
-  /** 低层严格 JSON body。 */
-  readonly body: JSONValue;
+  /** 已验证的强类型 body。 */
+  readonly body: PrivateBody;
   /** 已验签的唯一业务签名。 */
   readonly signature: Signature;
   /** 签名逻辑摘要。 */
   readonly digest: SHA256Hash;
-  /** 仅由 open 创建的运行时品牌，调用方不能伪造。 */
-  readonly [verifiedPrivateMessageBrand]: true;
+  /** 运行时身份由模块私有 WeakSet 维护，调用方不能伪造。 */
 }
-
-/** 强类型分派 body 联合类型。 */
-export type DecodedBody = WebRTCSignalV1Body | MessageV1Body;
-
-/** OpenAndDispatch 分派结果的公共字段。 */
-interface DecodedInboxMessageFields {
-  /** 实际 inbox channel。 */
-  readonly channel: string;
-  /** 信封发送者。 */
-  readonly from_public_key: PublicKey;
-  /** channel 目标。 */
-  readonly to_public_key: PublicKey;
-  /** 私密消息编号。 */
-  readonly message_id: MessageID;
-  /** 发布时间 Unix 毫秒。 */
-  readonly issued_at_ms: number;
-  /** 过期时间 Unix 毫秒。 */
-  readonly expires_at_ms: number;
-  /** 唯一业务签名。 */
-  readonly signature: Signature;
-  /** 签名逻辑摘要。 */
-  readonly digest: SHA256Hash;
-  /** 仅由 dispatch 创建的运行时品牌，调用方不能伪造。 */
-  readonly [decodedInboxMessageBrand]: true;
-}
-
-/** OpenAndDispatch 的强类型 discriminated union 分派结果。 */
-export type DecodedInboxMessage =
-  | (DecodedInboxMessageFields & { readonly protocol: typeof WEBRTC_SIGNAL_PROTOCOL; readonly body: WebRTCSignalV1Body })
-  | (DecodedInboxMessageFields & { readonly protocol: typeof APP_MESSAGE_PROTOCOL; readonly body: MessageV1Body });
 
 /** 私密消息去重键。 */
 export interface DeduplicationKey {
@@ -194,18 +150,6 @@ export function marshalEnvelope(envelope: EncryptedEnvelopeV1): Uint8Array {
   });
   if (result.byteLength > MAX_JSON_BYTES) throw protocolError(ERROR_CODES.MESSAGE_TOO_LARGE, "加密信封超过 JSON 字节上限");
   return new Uint8Array(result);
-}
-
-/** 检查外层认证公钥与信封发送者一致。 */
-export function reviewEnvelopeAdmission(envelope: EncryptedEnvelopeV1, authenticatedPublicKey: PublicKey): AdmissionReviewedEnvelope {
-  validateEnvelope(envelope);
-  checkIdentity(authenticatedPublicKey, envelope.from_public_key, "外层认证公钥与信封 from_public_key 不一致");
-  return admissionReviewedEnvelope({ envelope: cloneAndFreeze(envelope), authenticated_public_key: authenticatedPublicKey });
-}
-
-/** 返回值是否由 reviewEnvelopeAdmission 创建。 */
-export function isAdmissionReviewedEnvelope(value: unknown): value is AdmissionReviewedEnvelope {
-  return value !== null && typeof value === "object" && admissionReviewedEnvelopes.has(value) && Object.isFrozen(value);
 }
 
 /** 对强类型私密消息生成唯一确定性签名。 */
@@ -293,10 +237,11 @@ export async function open(channel: string, envelopeJSON: string | Uint8Array, r
           const issued_at_ms = parseUnixMillis(requireField(value, "issued_at_ms"), "issued_at_ms");
           const expires_at_ms = parseUnixMillis(requireField(value, "expires_at_ms"), "expires_at_ms");
           validatePrivateTimes(issued_at_ms, expires_at_ms, nowMs, protocol, true);
-          const body = requireField(value, "body");
+          const bodyValue = requireField(value, "body");
           const signature = parseSignature(stringField(value, "signature"));
-          const digest = signingDigestRaw(channel, envelope.from_public_key, protocol, message_id, issued_at_ms, expires_at_ms, body);
+          const digest = signingDigestRaw(channel, envelope.from_public_key, protocol, message_id, issued_at_ms, expires_at_ms, bodyValue);
           verifyDigestWithPublic(envelope.from_public_key, digest, signature);
+          const body = parsePrivateBody(protocol, bodyValue);
           return verifiedPrivateMessage({ channel, from_public_key: envelope.from_public_key, to_public_key: recipient, protocol, message_id, issued_at_ms, expires_at_ms, body, signature, digest: sha256HashFromBytes(digest) });
         } finally {
           clearBytes(plaintext);
@@ -308,24 +253,52 @@ export async function open(channel: string, envelopeJSON: string | Uint8Array, r
       clearBytes(shared);
     }
   } catch (error) {
-    if (error instanceof ChannelProtocolError && (hasCode(error, ERROR_CODES.MESSAGE_EXPIRED) || hasCode(error, ERROR_CODES.INVALID_TIME))) throw error;
+    if (error instanceof ChannelProtocolError && (hasCode(error, ERROR_CODES.MESSAGE_EXPIRED) || hasCode(error, ERROR_CODES.INVALID_TIME) || hasCode(error, ERROR_CODES.UNSUPPORTED_PROTOCOL))) throw error;
     throw protocolError(ERROR_CODES.OPEN_FAILED, "私密信封无法打开");
   }
 }
 
-/** 按 protocol 将低层 raw body 分派为 WebRTC 或应用消息强类型。 */
-export function dispatch(message: VerifiedPrivateMessage): DecodedInboxMessage {
-  requireVerifiedPrivateMessage(message);
-  let body: DecodedBody;
-  if (message.protocol === WEBRTC_SIGNAL_PROTOCOL) body = parseWebRTCBodyValue(message.body);
-  else if (message.protocol === APP_MESSAGE_PROTOCOL) body = parseAppBodyValue(message.body);
-  else throw protocolError(ERROR_CODES.UNSUPPORTED_PROTOCOL, "私密消息 protocol 未注册");
-  return decodedInboxMessage({ ...message, body });
+/** 从两条已解密、已验签的完整私密消息检查 Deliver/ACK 关系。 */
+export function validateAckRelation(delivery: VerifiedPrivateMessage, ack: VerifiedPrivateMessage): void {
+  requireVerifiedPrivateMessage(delivery);
+  requireVerifiedPrivateMessage(ack);
+  if (delivery.protocol !== APP_MESSAGE_PROTOCOL || ack.protocol !== APP_MESSAGE_PROTOCOL) throw protocolError(ERROR_CODES.INVALID_RELATION, "Deliver 和 ACK 必须属于应用消息子协议");
+	if (!isAppBody(delivery.body) || delivery.body.type !== "deliver") throw protocolError(ERROR_CODES.INVALID_RELATION, "第一条应用消息不是 Deliver");
+	if (!isAppBody(ack.body) || ack.body.type !== "ack") throw protocolError(ERROR_CODES.INVALID_RELATION, "第二条应用消息不是 ACK");
+  if (ack.from_public_key !== delivery.to_public_key) throw protocolError(ERROR_CODES.INVALID_RELATION, "ACK 发送者不是 Deliver 接收者");
+  if (ack.to_public_key !== delivery.from_public_key) throw protocolError(ERROR_CODES.INVALID_RELATION, "ACK 接收者不是 Deliver 发送者");
+	if (ack.body.acknowledged_message_id !== delivery.message_id) throw protocolError(ERROR_CODES.INVALID_RELATION, "ACK 未关联原 Deliver message_id");
 }
 
-/** 直接解密并返回强类型分派结果。 */
-export async function openAndDispatch(channel: string, envelopeJSON: string | Uint8Array, recipientPrivateKey: PrivateKey | Uint8Array, nowMs: number): Promise<DecodedInboxMessage> {
-  return dispatch(await open(channel, envelopeJSON, recipientPrivateKey, nowMs));
+/** 从两条已解密、已验签的完整私密消息检查 Ping/Pong 关系。 */
+export function validatePongRelation(pingMessage: VerifiedPrivateMessage, pongMessage: VerifiedPrivateMessage): void {
+  requireVerifiedPrivateMessage(pingMessage);
+  requireVerifiedPrivateMessage(pongMessage);
+  if (pingMessage.protocol !== PING_PROTOCOL || pongMessage.protocol !== PING_PROTOCOL) throw protocolError(ERROR_CODES.INVALID_RELATION, "Ping 和 Pong 必须属于 Ping/Pong 子协议");
+	if (!isPingBody(pingMessage.body) || pingMessage.body.type !== "ping" || !isPingBody(pongMessage.body) || pongMessage.body.type !== "pong") throw protocolError(ERROR_CODES.INVALID_RELATION, "Ping/Pong body 类型不匹配");
+  if (pongMessage.from_public_key !== pingMessage.to_public_key) throw protocolError(ERROR_CODES.INVALID_RELATION, "Pong 发送者不是 Ping 接收者");
+  if (pongMessage.to_public_key !== pingMessage.from_public_key) throw protocolError(ERROR_CODES.INVALID_RELATION, "Pong 接收者不是 Ping 发送者");
+	if (pongMessage.body.ping_message_id !== pingMessage.message_id) throw protocolError(ERROR_CODES.INVALID_RELATION, "Pong 未关联原 Ping message_id");
+}
+
+/** 从已解密、已验签的 offer 和后续信令检查 WebRTC 关系。 */
+export function validateWebRTCRelation(offer: VerifiedPrivateMessage, message: VerifiedPrivateMessage): void {
+  requireVerifiedPrivateMessage(offer);
+  requireVerifiedPrivateMessage(message);
+  if (offer.protocol !== WEBRTC_SIGNAL_PROTOCOL || message.protocol !== WEBRTC_SIGNAL_PROTOCOL) throw protocolError(ERROR_CODES.INVALID_RELATION, "WebRTC 消息必须属于 WebRTC 子协议");
+	if (!isWebRTCBody(offer.body) || offer.body.signal.type !== "offer") throw protocolError(ERROR_CODES.INVALID_RELATION, "第一条 WebRTC 消息必须是 offer");
+	if (!isWebRTCBody(message.body)) throw protocolError(ERROR_CODES.INVALID_RELATION, "WebRTC 后续消息 body 不合法");
+	const offerBody = offer.body;
+	const nextBody = message.body;
+  if (nextBody.request_message_id !== offerBody.request_message_id || nextBody.session_id !== offerBody.session_id) throw protocolError(ERROR_CODES.INVALID_RELATION, "WebRTC request_message_id 或 session_id 不匹配");
+  if (nextBody.signal.type === "answer") {
+    if (message.from_public_key !== offer.to_public_key || message.to_public_key !== offer.from_public_key) throw protocolError(ERROR_CODES.INVALID_RELATION, "answer 方向与 offer 不匹配");
+    return;
+  }
+  if (nextBody.signal.type !== "ice-candidate" && nextBody.signal.type !== "end-of-candidates") throw protocolError(ERROR_CODES.INVALID_RELATION, "WebRTC 后续消息必须是 answer、ICE 或 end-of-candidates");
+  const senderIsParticipant = message.from_public_key === offer.from_public_key || message.from_public_key === offer.to_public_key;
+  const recipientIsParticipant = message.to_public_key === offer.from_public_key || message.to_public_key === offer.to_public_key;
+  if (!senderIsParticipant || !recipientIsParticipant || message.from_public_key === message.to_public_key) throw protocolError(ERROR_CODES.INVALID_RELATION, "ICE 发送者或接收者不属于 offer 双方");
 }
 
 /**
@@ -343,8 +316,8 @@ export function reviewOfferForHashRequest(hashRequest: VerifiedHashRequest, offe
     throw protocolError(ERROR_CODES.INVALID_RELATION, "Hash 请求未声明 webrtc-sdp locator");
   }
   if (offer.protocol !== WEBRTC_SIGNAL_PROTOCOL) throw protocolError(ERROR_CODES.INVALID_RELATION, "offer protocol 不是 WebRTC 子协议");
-  const body = parseWebRTCBodyValue(offer.body);
-  if (body.signal.type !== "offer") throw protocolError(ERROR_CODES.INVALID_RELATION, "引用的私密消息不是 WebRTC offer");
+	if (!isWebRTCBody(offer.body) || offer.body.signal.type !== "offer") throw protocolError(ERROR_CODES.INVALID_RELATION, "引用的私密消息不是 WebRTC offer");
+	const body = offer.body;
   if (body.request_message_id !== hashRequest.message_id) throw protocolError(ERROR_CODES.INVALID_RELATION, "offer 未关联该 Hash 请求 message_id");
   if (offer.to_public_key !== hashRequest.from_public_key) throw protocolError(ERROR_CODES.INVALID_RELATION, "offer 接收者不是 Hash 请求者");
   return sessionKey(hashRequest.message_id, offer.from_public_key, body.session_id);
@@ -366,63 +339,23 @@ export function signedDigest(message: UnsignedPrivateMessage | SignedPrivateMess
   return sha256HashFromBytes(signingDigest(message));
 }
 
-/** Go 风格大写别名。 */
-export const ParseEnvelope = parseEnvelope;
-/** Go 风格大写别名。 */
-export const Marshal = marshalEnvelope;
-/** Go 风格大写别名。 */
-export const MarshalPrivateMessage = marshalPrivateMessage;
-/** Go 风格大写别名。 */
-export const ReviewEnvelopeAdmission = reviewEnvelopeAdmission;
-/** Go 风格大写别名。 */
-export const SignPrivateMessage = signPrivateMessage;
-/** Go 风格大写别名。 */
-export const SealSigned = sealSigned;
-/** Go 风格大写别名。 */
-export const SignAndSeal = signAndSeal;
-/** Go 风格大写别名。 */
-export const Open = open;
-/** Go 风格大写别名。 */
-export const Dispatch = dispatch;
-/** Go 风格大写别名。 */
-export const OpenAndDispatch = openAndDispatch;
-/** Go 风格大写别名。 */
-export const DedupKey = dedupKey;
-/** Go 风格大写别名。 */
-export const CheckDigestConflict = checkDigestConflict;
-/** Go 风格大写别名。 */
-export const SignedDigest = signedDigest;
-/** Go 风格跨协议 offer/Hash 关系审查别名。 */
-export const ReviewOfferForHashRequest = reviewOfferForHashRequest;
-
-function verifiedPrivateMessage(value: Omit<VerifiedPrivateMessage, typeof verifiedPrivateMessageBrand>): VerifiedPrivateMessage {
-  const result = { ...cloneAndFreeze(value) } as VerifiedPrivateMessage;
-  Object.defineProperty(result, verifiedPrivateMessageBrand, { value: true, enumerable: false, writable: false, configurable: false });
-  const frozen = freezeDeep(result);
+function verifiedPrivateMessage(value: VerifiedPrivateMessage): VerifiedPrivateMessage {
+  const frozen = freezeDeep(cloneAndFreeze(value));
   verifiedPrivateMessages.add(frozen);
   return frozen;
 }
 
-function admissionReviewedEnvelope(value: Omit<AdmissionReviewedEnvelope, typeof admissionReviewedEnvelopeBrand>): AdmissionReviewedEnvelope {
-  const result = { ...cloneAndFreeze(value) } as AdmissionReviewedEnvelope;
-  Object.defineProperty(result, admissionReviewedEnvelopeBrand, { value: true, enumerable: false, writable: false, configurable: false });
-  const frozen = freezeDeep(result);
-  admissionReviewedEnvelopes.add(frozen);
-  return frozen;
-}
-
-function decodedInboxMessage(value: Record<string, unknown>): DecodedInboxMessage {
-  const result = { ...cloneAndFreeze(value) } as unknown as DecodedInboxMessage;
-  Object.defineProperty(result, decodedInboxMessageBrand, { value: true, enumerable: false, writable: false, configurable: false });
-  const frozen = freezeDeep(result);
-  decodedInboxMessages.add(frozen);
-  return frozen;
-}
-
 function requireVerifiedPrivateMessage(value: unknown): asserts value is VerifiedPrivateMessage {
-  if (value === null || typeof value !== "object" || !verifiedPrivateMessages.has(value) || !(value as Record<PropertyKey, unknown>)[verifiedPrivateMessageBrand] || !Object.isFrozen(value)) {
+  if (value === null || typeof value !== "object" || !verifiedPrivateMessages.has(value) || !Object.isFrozen(value)) {
     throw protocolError(ERROR_CODES.INVALID_SIGNATURE, "消息不是 SDK 生成的已验证私密消息");
   }
+}
+
+function parsePrivateBody(protocol: string, value: JSONValue): PrivateBody {
+  if (protocol === WEBRTC_SIGNAL_PROTOCOL) return parseWebRTCBodyValue(value);
+  if (protocol === APP_MESSAGE_PROTOCOL) return parseAppBodyValue(value);
+  if (protocol === PING_PROTOCOL) return parsePingBodyValue(value);
+  throw protocolError(ERROR_CODES.UNSUPPORTED_PROTOCOL, "私密消息 protocol 未注册");
 }
 
 function validateEnvelope(envelope: EncryptedEnvelopeV1): void {
@@ -440,13 +373,16 @@ function validateUnsigned(message: UnsignedPrivateMessage, withSignature: boolea
   parseInboxChannel(message.channel, INBOX_CHANNEL_PREFIX);
   parsePublicKey(message.from_public_key);
   parseMessageID(message.message_id);
-  if (message.protocol !== WEBRTC_SIGNAL_PROTOCOL && message.protocol !== APP_MESSAGE_PROTOCOL) throw protocolError(ERROR_CODES.UNSUPPORTED_PROTOCOL, "私密消息 protocol 未注册");
+  if (message.protocol !== WEBRTC_SIGNAL_PROTOCOL && message.protocol !== APP_MESSAGE_PROTOCOL && message.protocol !== PING_PROTOCOL) throw protocolError(ERROR_CODES.UNSUPPORTED_PROTOCOL, "私密消息 protocol 未注册");
   if (message.protocol === WEBRTC_SIGNAL_PROTOCOL) {
     if (!isWebRTCBody(message.body)) throw protocolError(ERROR_CODES.INVALID_BODY, "protocol 与 WebRTC body 类型不一致");
     validateWebRTCBody(message.body);
-  } else {
+  } else if (message.protocol === APP_MESSAGE_PROTOCOL) {
     if (!isAppBody(message.body)) throw protocolError(ERROR_CODES.INVALID_BODY, "protocol 与应用 body 类型不一致");
     validateAppBody(message.body);
+  } else {
+    if (!isPingBody(message.body)) throw protocolError(ERROR_CODES.INVALID_BODY, "protocol 与 Ping/Pong body 类型不一致");
+    validatePingBody(message.body);
   }
   validatePrivateTimes(message.issued_at_ms, message.expires_at_ms, 0, message.protocol, false);
 }
@@ -480,7 +416,7 @@ function validatePrivateTimes(issued: number, expires: number, now: number, prot
   parseUnixMillis(issued, "issued_at_ms");
   parseUnixMillis(expires, "expires_at_ms");
   if (issued >= expires) throw protocolError(ERROR_CODES.INVALID_TIME, "私密消息时间顺序不合法");
-  const maxLifetime = protocol === WEBRTC_SIGNAL_PROTOCOL ? 2 * 60 * 1000 : 24 * 60 * 60 * 1000;
+  const maxLifetime = protocol === WEBRTC_SIGNAL_PROTOCOL ? 2 * 60 * 1000 : protocol === PING_PROTOCOL ? 60 * 1000 : 24 * 60 * 60 * 1000;
   if (expires - issued > maxLifetime) throw protocolError(ERROR_CODES.INVALID_TIME, "私密消息有效期超过子协议上限");
   if (checkCurrent && issued > now && issued - now > 60 * 1000) throw protocolError(ERROR_CODES.INVALID_TIME, "私密消息发布时间超出本地时钟容差");
   if (checkCurrent && now >= expires) throw protocolError(ERROR_CODES.MESSAGE_EXPIRED, "私密消息已过期");
@@ -511,4 +447,8 @@ function isWebRTCBody(value: PrivateBody): value is WebRTCSignalV1Body {
 
 function isAppBody(value: PrivateBody): value is MessageV1Body {
   return value !== null && typeof value === "object" && !Array.isArray(value) && "type" in value && (value.type === "deliver" || value.type === "ack");
+}
+
+function isPingBody(value: PrivateBody): value is PingBody | PongBody {
+  return value !== null && typeof value === "object" && !Array.isArray(value) && "type" in value && (value.type === "ping" || value.type === "pong");
 }

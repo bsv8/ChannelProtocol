@@ -24,7 +24,7 @@ func main() {
 	}
 }
 
-// hashRequestExample 构造、签名并审查公开 Hash 请求。
+// hashRequestExample 构造、签名并验签公开 Hash 请求。
 func hashRequestExample() error {
 	privateKey, err := channels.GeneratePrivateKey()
 	if err != nil {
@@ -60,11 +60,11 @@ func hashRequestExample() error {
 	if err != nil {
 		return err
 	}
-	_, err = verified.ReviewAdmission(publicKey)
-	if err == nil {
-		fmt.Println("Hash 请求：签名和发布入口身份审查通过")
+	if !verified.IsVerified() {
+		return fmt.Errorf("Hash 请求未完成验签")
 	}
-	return err
+	fmt.Println("Hash 请求：签名和验签通过")
+	return nil
 }
 
 // webRTCExample 签名、长期密钥加密、解密并强类型分派 WebRTC offer。
@@ -114,7 +114,7 @@ func webRTCExample() error {
 	if err != nil {
 		return err
 	}
-	decoded, err := channels.DecodeInboxChannel(envelope.Channel, envelopeJSON, recipientPrivate, now)
+	decoded, err := inbox.Open(envelope.Channel, envelopeJSON, recipientPrivate, now)
 	if err != nil {
 		return err
 	}
@@ -176,9 +176,6 @@ func deliverAckRetryExample() error {
 	if err != nil {
 		return err
 	}
-	if _, err := inbox.Dispatch(received); err != nil {
-		return err
-	}
 	ackBody, err := appmessage.NewAck(received.MessageID())
 	if err != nil {
 		return err
@@ -207,22 +204,14 @@ func deliverAckRetryExample() error {
 	if err != nil {
 		return err
 	}
-	ackDecoded, err := inbox.Dispatch(ackReceived)
-	if err != nil {
-		return err
-	}
-	ack, ok := ackDecoded.AppMessage()
+	ack, ok := ackReceived.AppMessage()
 	if !ok {
 		return fmt.Errorf("ACK 未分派为应用 body")
 	}
-	ackValue, ok := ack.(appmessage.AckBody)
-	if !ok {
+	if _, ok := ack.(appmessage.AckBody); !ok {
 		return fmt.Errorf("应用 body 不是 ACK")
 	}
-	if err := appmessage.ValidateAckRelation(
-		appmessage.DeliveryContext{FromPublicKey: received.FromPublicKey(), ToPublicKey: received.ToPublicKey(), MessageID: received.MessageID()},
-		appmessage.AckContext{FromPublicKey: ackReceived.FromPublicKey(), ToPublicKey: ackReceived.ToPublicKey(), Body: ackValue},
-	); err != nil {
+	if err := inbox.ValidateAckRelation(received, ackReceived); err != nil {
 		return err
 	}
 	if _, err := inbox.SealSigned(signedDeliver, senderPrivate); err != nil {

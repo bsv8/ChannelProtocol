@@ -2,6 +2,7 @@ package channels_test
 
 import (
 	"bytes"
+	"errors"
 	"testing"
 
 	"github.com/bsv8/ChannelProtocol"
@@ -44,12 +45,12 @@ func TestJSONResourceLimits(t *testing.T) {
 	tooDeep := bytes.Repeat([]byte{'['}, channels.MaxJSONDepth+1)
 	tooDeep = append(tooDeep, '0')
 	tooDeep = append(tooDeep, bytes.Repeat([]byte{']'}, channels.MaxJSONDepth+1)...)
-	if _, err := channels.CanonicalizeJSON(tooDeep); !channels.IsErrorCode(err, channels.MessageTooLargeCode) {
+	if _, err := channels.CanonicalizeJSON(tooDeep); !errors.Is(err, channels.ErrMessageTooLarge) {
 		t.Fatalf("过深 JSON 未返回 MESSAGE_TOO_LARGE: %v", err)
 	}
 	tooLarge := append([]byte{'"'}, bytes.Repeat([]byte{'x'}, channels.MaxJSONBytes)...)
 	tooLarge = append(tooLarge, '"')
-	if _, err := channels.CanonicalizeJSON(tooLarge); !channels.IsErrorCode(err, channels.MessageTooLargeCode) {
+	if _, err := channels.CanonicalizeJSON(tooLarge); !errors.Is(err, channels.ErrMessageTooLarge) {
 		t.Fatalf("超大 JSON 未返回 MESSAGE_TOO_LARGE: %v", err)
 	}
 	tooManyNodes := []byte{'['}
@@ -60,7 +61,7 @@ func TestJSONResourceLimits(t *testing.T) {
 		tooManyNodes = append(tooManyNodes, '0')
 	}
 	tooManyNodes = append(tooManyNodes, ']')
-	if _, err := channels.CanonicalizeJSON(tooManyNodes); !channels.IsErrorCode(err, channels.MessageTooLargeCode) {
+	if _, err := channels.CanonicalizeJSON(tooManyNodes); !errors.Is(err, channels.ErrMessageTooLarge) {
 		t.Fatalf("超多节点 JSON 未返回 MESSAGE_TOO_LARGE: %v", err)
 	}
 }

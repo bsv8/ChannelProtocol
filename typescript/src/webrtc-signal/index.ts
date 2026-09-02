@@ -175,55 +175,8 @@ export function sessionKey(requestMessageId: MessageID, offererPublicKey: Public
   return freezeDeep({ request_message_id: requestMessageId, offerer_public_key: offererPublicKey, session_id: sessionId, key: `${requestMessageId}\0${offererPublicKey}\0${sessionId}` });
 }
 
-/** 调用方保存的 offer 会话上下文；SDK 不保存连接状态。 */
-export interface SessionContext {
-  /** 会话三元组。 */
-  readonly key: SessionKey;
-  /** inbox channel 后缀对应的 answerer 公钥。 */
-  readonly answerer_public_key: PublicKey;
-}
-
-/** 从 offer 和双方身份创建关系校验上下文。 */
-export function newSessionContext(offer: WebRTCSignalV1Body, offererPublicKey: PublicKey, answererPublicKey: PublicKey): SessionContext {
-  validateBody(offer);
-  if (offer.signal.type !== "offer") throw protocolError(ERROR_CODES.INVALID_RELATION, "会话上下文必须由 offer 创建");
-  parsePublicKey(answererPublicKey);
-  return freezeDeep({ key: sessionKey(offer.request_message_id, offererPublicKey, offer.session_id), answerer_public_key: answererPublicKey });
-}
-
-/** 纯函数检查 offer/answer/ICE 与已保存会话关系。 */
-export function validateRelation(body: WebRTCSignalV1Body, context: SessionContext, senderPublicKey: PublicKey): void {
-  validateBody(body);
-  parseMessageID(context.key.request_message_id);
-  parsePublicKey(context.key.offerer_public_key);
-  parseSessionID(context.key.session_id);
-  parsePublicKey(context.answerer_public_key);
-  parsePublicKey(senderPublicKey);
-  if (body.request_message_id !== context.key.request_message_id || body.session_id !== context.key.session_id) throw protocolError(ERROR_CODES.INVALID_RELATION, "request_message_id 或 session_id 与会话上下文不一致");
-  if (body.signal.type === "offer" && senderPublicKey !== context.key.offerer_public_key) throw protocolError(ERROR_CODES.INVALID_RELATION, "offer 发送者不是 offerer");
-  if (body.signal.type === "answer" && senderPublicKey !== context.answerer_public_key) throw protocolError(ERROR_CODES.INVALID_RELATION, "answer 发送者不是 answerer");
-  if ((body.signal.type === "ice-candidate" || body.signal.type === "end-of-candidates") && senderPublicKey !== context.key.offerer_public_key && senderPublicKey !== context.answerer_public_key) throw protocolError(ERROR_CODES.INVALID_RELATION, "ICE 发送者不属于会话双方");
-}
-
 /** 本子协议允许的最大有效期。 */
 export const MAX_LIFETIME_MS = 2 * 60 * 1000;
-
-/** Go 风格大写别名。 */
-export const NewOffer = newOffer;
-/** Go 风格大写别名。 */
-export const NewAnswer = newAnswer;
-/** Go 风格大写别名。 */
-export const NewICECandidate = newICECandidate;
-/** Go 风格大写别名。 */
-export const NewEndOfCandidates = newEndOfCandidates;
-/** Go 风格大写别名。 */
-export const ParseBody = parseBody;
-/** Go 风格大写别名。 */
-export const SessionKeyFor = sessionKey;
-/** Go 风格大写别名。 */
-export const NewSessionContext = newSessionContext;
-/** Go 风格大写别名。 */
-export const ValidateRelation = validateRelation;
 
 function validateCandidate(candidate: ICECandidate): void {
   requireExactObjectKeys(candidate, ["candidate", "sdp_mid", "sdp_m_line_index"], "ICE candidate");

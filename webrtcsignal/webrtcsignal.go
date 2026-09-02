@@ -6,7 +6,6 @@ import (
 	"fmt"
 
 	"github.com/bsv8/ChannelProtocol/internal/encoding"
-	"github.com/bsv8/ChannelProtocol/internal/protocol"
 	"github.com/bsv8/ChannelProtocol/internal/protocolerror"
 	"github.com/bsv8/ChannelProtocol/internal/strictjson"
 )
@@ -56,9 +55,6 @@ type WebRTCSignalV1Body struct {
 	// Signal 是 SDP/ICE 联合信令值。
 	Signal Signal
 }
-
-// ProtocolName 返回该 body 绑定的私密子协议名称。
-func (WebRTCSignalV1Body) ProtocolName() string { return protocol.WebRTCSignalProtocol }
 
 // JSONValue 返回不含公共消息头的 JSON body 值。
 func (body WebRTCSignalV1Body) JSONValue() any { return bodyValue(body) }
@@ -194,74 +190,6 @@ func NewSessionKey(requestID encoding.MessageID, offerer encoding.PublicKey, ses
 		return SessionKey{}, err
 	}
 	return SessionKey{RequestMessageID: requestID, OffererPublicKey: offerer, SessionID: sessionID}, nil
-}
-
-// SessionContext 是调用方保存的 offer 会话上下文，不由 SDK 持久化。
-type SessionContext struct {
-	// Key 是会话三元组。
-	Key SessionKey
-	// AnswererPublicKey 是 offer 发送到的 inbox 目标公钥。
-	AnswererPublicKey encoding.PublicKey
-}
-
-// NewSessionContext 从合法 offer 和双方身份创建关系校验上下文。
-func NewSessionContext(offer WebRTCSignalV1Body, offerer, answerer encoding.PublicKey) (SessionContext, error) {
-	if err := offer.Validate(); err != nil {
-		return SessionContext{}, err
-	}
-	if offer.Signal.Type != SignalOffer {
-		return SessionContext{}, protocolerror.New(protocolerror.InvalidRelation, "会话上下文必须由 offer 创建")
-	}
-	key, err := NewSessionKey(offer.RequestMessageID, offerer, offer.SessionID)
-	if err != nil {
-		return SessionContext{}, err
-	}
-	if _, err := encoding.ParsePublicKey(answerer.String()); err != nil {
-		return SessionContext{}, err
-	}
-	return SessionContext{Key: key, AnswererPublicKey: answerer}, nil
-}
-
-// ValidateRelation 纯函数检查 offer/answer/ICE 与已保存会话及发送者的关系。
-func ValidateRelation(body WebRTCSignalV1Body, context SessionContext, sender encoding.PublicKey) error {
-	if err := body.Validate(); err != nil {
-		return err
-	}
-	if _, err := encoding.ParsePublicKey(context.Key.OffererPublicKey.String()); err != nil {
-		return err
-	}
-	if _, err := encoding.ParsePublicKey(context.AnswererPublicKey.String()); err != nil {
-		return err
-	}
-	if _, err := encoding.ParseMessageID(context.Key.RequestMessageID.String()); err != nil {
-		return err
-	}
-	if _, err := encoding.ParseSessionID(context.Key.SessionID.String()); err != nil {
-		return err
-	}
-	if _, err := encoding.ParsePublicKey(sender.String()); err != nil {
-		return err
-	}
-	if !body.RequestMessageID.Equal(context.Key.RequestMessageID) || !body.SessionID.Equal(context.Key.SessionID) {
-		return protocolerror.New(protocolerror.InvalidRelation, "request_message_id 或 session_id 与会话上下文不一致")
-	}
-	switch body.Signal.Type {
-	case SignalOffer:
-		if !sender.Equal(context.Key.OffererPublicKey) {
-			return protocolerror.New(protocolerror.InvalidRelation, "offer 发送者不是 offerer")
-		}
-	case SignalAnswer:
-		if !sender.Equal(context.AnswererPublicKey) {
-			return protocolerror.New(protocolerror.InvalidRelation, "answer 发送者不是 answerer")
-		}
-	case SignalICECandidate, SignalEndOfCandidates:
-		if !sender.Equal(context.Key.OffererPublicKey) && !sender.Equal(context.AnswererPublicKey) {
-			return protocolerror.New(protocolerror.InvalidRelation, "ICE 发送者不属于会话双方")
-		}
-	default:
-		return protocolerror.New(protocolerror.InvalidRelation, "未知 WebRTC 信令类型")
-	}
-	return nil
 }
 
 // MaxLifetimeMs 返回本子协议允许的最大消息有效期。

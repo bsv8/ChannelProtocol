@@ -1,7 +1,7 @@
 /** 应用消息子协议模块，对应 04-应用消息子协议.md。 */
 import { APP_MESSAGE_PROTOCOL } from "../registry.js";
 import { ERROR_CODES, protocolError } from "../internal/errors.js";
-import { MessageID, PublicKey, SHA256Hash, parseMessageID, parsePublicKey, parseSHA256Hash } from "../internal/encoding.js";
+import { MessageID, parseMessageID } from "../internal/encoding.js";
 import { canonicalizeValue } from "../internal/jcs.js";
 import { MAX_JSON_BYTES } from "../internal/limits.js";
 import { isJSONObject, JSONValue, parseStrictJSON, requireExactObjectKeys, requireField, requireObjectKeys } from "../internal/strict-json.js";
@@ -95,78 +95,8 @@ export function parseBodyValue(value: JSONValue): MessageV1Body {
   throw protocolError(ERROR_CODES.INVALID_BODY, "不支持的应用消息 body.type");
 }
 
-/** 原 Deliver 的身份和编号上下文。 */
-export interface DeliveryContext {
-  /** Deliver 信封发送者。 */
-  readonly from_public_key: PublicKey;
-  /** Deliver inbox channel 目标。 */
-  readonly to_public_key: PublicKey;
-  /** Deliver 外层私密 message_id。 */
-  readonly message_id: MessageID;
-}
-
-/** ACK 的信封身份和 body 上下文。 */
-export interface AckContext {
-  /** ACK 信封发送者。 */
-  readonly from_public_key: PublicKey;
-  /** ACK inbox channel 目标。 */
-  readonly to_public_key: PublicKey;
-  /** ACK body。 */
-  readonly body: AckBody;
-}
-
-/** 检查 ACK 发送者、接收者和 acknowledged_message_id 与 Deliver 关系。 */
-export function validateAckRelation(delivery: DeliveryContext, ack: AckContext): void {
-  parsePublicKey(delivery.from_public_key);
-  parsePublicKey(delivery.to_public_key);
-  parsePublicKey(ack.from_public_key);
-  parsePublicKey(ack.to_public_key);
-  parseMessageID(delivery.message_id);
-  validateBody(ack.body);
-  if (ack.from_public_key !== delivery.to_public_key) throw protocolError(ERROR_CODES.INVALID_RELATION, "ACK 发送者不是 Deliver 接收者");
-  if (ack.to_public_key !== delivery.from_public_key) throw protocolError(ERROR_CODES.INVALID_RELATION, "ACK 接收者不是 Deliver 发送者");
-  if (ack.body.acknowledged_message_id !== delivery.message_id) throw protocolError(ERROR_CODES.INVALID_RELATION, "ACK 未关联原 Deliver message_id");
-}
-
-/** 应用消息去重键。 */
-export interface DeduplicationKey {
-  /** 固定应用子协议。 */
-  readonly protocol: typeof APP_MESSAGE_PROTOCOL;
-  /** 发送者公钥。 */
-  readonly from_public_key: PublicKey;
-  /** 外层私密消息编号。 */
-  readonly message_id: MessageID;
-}
-
-/** 构造应用消息去重键。 */
-export function dedupKey(fromPublicKey: PublicKey, messageId: MessageID): DeduplicationKey {
-  parsePublicKey(fromPublicKey);
-  parseMessageID(messageId);
-  return Object.freeze({ protocol: APP_MESSAGE_PROTOCOL, from_public_key: fromPublicKey, message_id: messageId });
-}
-
-/** 检查两个已计算摘要是否冲突。 */
-export function checkDigestConflict(existing: SHA256Hash, incoming: SHA256Hash): void {
-  parseSHA256Hash(existing);
-  parseSHA256Hash(incoming);
-  if (existing !== incoming) throw protocolError(ERROR_CODES.MESSAGE_ID_CONFLICT, "同一应用消息去重键对应不同已签名内容");
-}
-
 /** Deliver/ACK 最大有效期（24 小时）。 */
 export const MAX_LIFETIME_MS = 24 * 60 * 60 * 1000;
-
-/** Go 风格大写别名。 */
-export const NewDeliver = newDeliver;
-/** Go 风格大写别名。 */
-export const NewAck = newAck;
-/** Go 风格大写别名。 */
-export const ParseBody = parseBody;
-/** Go 风格大写别名。 */
-export const ValidateAckRelation = validateAckRelation;
-/** Go 风格大写别名。 */
-export const DedupKey = dedupKey;
-/** Go 风格大写别名。 */
-export const CheckDigestConflict = checkDigestConflict;
 
 function stringField(object: Record<string, JSONValue>, field: string): string {
   const value = requireField(object, field);

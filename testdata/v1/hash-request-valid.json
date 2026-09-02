@@ -7,5 +7,14 @@
     {"name": "ip4 tcp", "address": "/ip4/127.0.0.1/tcp/443"},
     {"name": "dns4 tcp", "address": "/dns4/node.example/tcp/443"},
     {"name": "ip6 tcp", "address": "/ip6/::1/tcp/443"}
+  ],
+  "time_boundary_cases": [
+    {
+      "name": "issued exactly at future skew boundary",
+      "channel": "bsv8.hash.request.v1",
+      "now_ms": 1700000000000,
+      "json": "{\"body\":{\"hash\":\"0000000000000000000000000000000000000000000000000000000000000000\",\"locators\":[{\"kind\":\"webrtc-sdp\"}]},\"expires_at_ms\":1700000660000,\"from_public_key\":\"0279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798\",\"issued_at_ms\":1700000060000,\"message_id\":\"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\",\"signature\":\"MEQCIDb-hGwDLeEgR3HgCyGOYVdvYjY3fqw6nrwtsaM0f9-dAiA9NXAxLI1rgnjfsRp3GPMPF5UxVadfgPVVQWewlr87fg\"}",
+      "expected": "ACCEPT"
+    }
   ]
 }

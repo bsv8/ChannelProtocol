@@ -3,6 +3,7 @@ package channels_test
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"reflect"
 	"testing"
 
@@ -163,7 +164,7 @@ func TestSharedDedupAndRelationsFixture(t *testing.T) {
 		t.Fatal(err)
 	}
 	publicKey := verifiedPublic.DedupKey()
-	actualPublicDedupKey := []string{publicKey.Channel, publicKey.FromPublicKey.String(), publicKey.MessageID.String()}
+	actualPublicDedupKey := []string{publicKey.FromPublicKey.String(), publicKey.MessageID.String()}
 	if !reflect.DeepEqual(actualPublicDedupKey, value.Expected.PublicDedupKey) {
 		t.Fatalf("公开去重键不一致: got %v want %v", actualPublicDedupKey, value.Expected.PublicDedupKey)
 	}
@@ -228,21 +229,16 @@ func TestSharedDedupAndRelationsFixture(t *testing.T) {
 		t.Fatalf("SessionKey 不一致: got %q want %q", session.String(), value.Expected.SessionKey)
 	}
 
-	delivery := appmessage.DeliveryContext{
-		FromPublicKey: mustPublicKey(t, value.Ack.Delivery.FromPublicKey),
-		ToPublicKey:   mustPublicKey(t, value.Ack.Delivery.ToPublicKey),
-		MessageID:     mustMessageID(t, value.Ack.Delivery.MessageID),
-	}
 	if value.Ack.Valid.ExpectedCode != nil {
 		t.Fatalf("ACK valid expected_code 应为 null，got %s", *value.Ack.Valid.ExpectedCode)
 	}
-	if err := validateFixtureAck(delivery, value.Ack.Valid); err != nil {
+	if err := validateFixtureAck(t, opened, value.Ack.Valid, privateA, publicA, privateB, publicB); err != nil {
 		t.Fatalf("ACK 正例失败: %v", err)
 	}
 	actualAckInvalid := make([]errorFixture, 0, len(value.Ack.Invalid))
 	for _, item := range value.Ack.Invalid {
-		err := validateFixtureAck(delivery, item)
-		if err == nil || !channels.IsErrorCode(err, channels.ErrorCode(*item.ExpectedCode)) {
+		err := validateFixtureAck(t, opened, item, privateA, publicA, privateB, publicB)
+		if !errorHasCode(err, *item.ExpectedCode) {
 			t.Fatalf("ACK 反例 %s expected %s got %v", item.Name, *item.ExpectedCode, err)
 		}
 		actualAckInvalid = append(actualAckInvalid, errorFixture{Name: item.Name, Code: *item.ExpectedCode})
@@ -253,35 +249,69 @@ func TestSharedDedupAndRelationsFixture(t *testing.T) {
 	if value.Conflict.ExpectedSameCode != nil {
 		t.Fatalf("same digest expected_code 应为 null，got %s", *value.Conflict.ExpectedSameCode)
 	}
-	if err := appmessage.CheckDigestConflict(sameDigest, sameDigest); err != nil {
-		t.Fatal(err)
-	}
 	if err := inbox.CheckDigestConflict(sameDigest, sameDigest); err != nil {
 		t.Fatal(err)
 	}
-	conflictErr := appmessage.CheckDigestConflict(sameDigest, differentDigest)
-	if conflictErr == nil || !channels.IsErrorCode(conflictErr, channels.ErrorCode(value.Conflict.ExpectedDifferentCode)) {
-		t.Fatalf("公开冲突错误码错误: expected %s got %v", value.Conflict.ExpectedDifferentCode, conflictErr)
-	}
-	privateConflictErr := inbox.CheckDigestConflict(sameDigest, differentDigest)
-	if privateConflictErr == nil || !channels.IsErrorCode(privateConflictErr, channels.ErrorCode(value.Conflict.ExpectedDifferentCode)) {
-		t.Fatalf("私密冲突错误码错误: expected %s got %v", value.Conflict.ExpectedDifferentCode, privateConflictErr)
+	conflictErr := inbox.CheckDigestConflict(sameDigest, differentDigest)
+	if !errorHasCode(conflictErr, value.Conflict.ExpectedDifferentCode) {
+		t.Fatalf("冲突错误码错误: expected %s got %v", value.Conflict.ExpectedDifferentCode, conflictErr)
 	}
 	if value.Expected.AckValid != true || !reflect.DeepEqual(actualAckInvalid, value.Expected.AckInvalid) || value.Expected.ConflictCode != value.Conflict.ExpectedDifferentCode {
 		t.Fatal("dedup fixture expected 结构不完整")
 	}
 }
 
-func validateFixtureAck(delivery appmessage.DeliveryContext, value dedupAckCaseFixture) error {
+func validateFixtureAck(t *testing.T, delivery inbox.VerifiedPrivateMessage, value dedupAckCaseFixture, privateA channels.PrivateKey, publicA channels.PublicKey, privateB channels.PrivateKey, publicB channels.PublicKey) error {
+	from, err := channels.ParsePublicKey(value.FromPublicKey)
+	if err != nil {
+		return err
+	}
+	to, err := channels.ParsePublicKey(value.ToPublicKey)
+	if err != nil {
+		return err
+	}
 	ack, err := appmessage.NewAck(mustMessageIDValue(value.AcknowledgedMessageID))
 	if err != nil {
 		return err
 	}
-	return appmessage.ValidateAckRelation(delivery, appmessage.AckContext{
-		FromPublicKey: mustPublicKeyValue(value.FromPublicKey),
-		ToPublicKey:   mustPublicKeyValue(value.ToPublicKey),
+	var senderPrivate channels.PrivateKey
+	var recipientPrivate channels.PrivateKey
+	if from.Equal(publicA) {
+		senderPrivate = privateA
+	} else if from.Equal(publicB) {
+		senderPrivate = privateB
+	} else {
+		return fmt.Errorf("ACK sender 不在 fixture 身份中")
+	}
+	if to.Equal(publicA) {
+		recipientPrivate = privateA
+	} else if to.Equal(publicB) {
+		recipientPrivate = privateB
+	} else {
+		return fmt.Errorf("ACK recipient 不在 fixture 身份中")
+	}
+	ackMessageID := mustMessageIDValue("AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE")
+	envelope, err := inbox.SignAndSeal(inbox.UnsignedPrivateMessage{
+		Channel:       channels.InboxChannel(to),
+		FromPublicKey: from,
+		Protocol:      channels.AppMessageProtocol,
+		MessageID:     ackMessageID,
+		IssuedAtMs:    delivery.IssuedAtMs(),
+		ExpiresAtMs:   delivery.ExpiresAtMs(),
 		Body:          ack,
-	})
+	}, senderPrivate)
+	if err != nil {
+		return err
+	}
+	envelopeJSON, err := inbox.Marshal(envelope)
+	if err != nil {
+		return err
+	}
+	ackMessage, err := inbox.Open(envelope.Channel, envelopeJSON, recipientPrivate, delivery.IssuedAtMs()+500)
+	if err != nil {
+		return err
+	}
+	return inbox.ValidateAckRelation(delivery, ackMessage)
 }
 
 func mustPublicKey(t *testing.T, value string) channels.PublicKey {

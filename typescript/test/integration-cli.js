@@ -6,6 +6,7 @@ import * as channels from "../dist/index.js";
 import * as appmessage from "../dist/app-message/index.js";
 import * as hashrequest from "../dist/hash-request/index.js";
 import * as inbox from "../dist/inbox/index.js";
+import * as ping from "../dist/ping/index.js";
 import * as webrtc from "../dist/webrtc-signal/index.js";
 
 const fixture = JSON.parse(fs.readFileSync(new URL("../../testdata/v1/interop-v1.json", import.meta.url), "utf8"));
@@ -86,16 +87,22 @@ async function sharedInvalidResults() {
   const appInvalid = readTestFixture("app-message-invalid.json");
   for (const item of appInvalid.cases) append("app-message-invalid", item, expectCode(() => appmessage.parseBody(item.json), item.expected_code));
 
+  const pingInvalid = readTestFixture("ping-invalid.json");
+  for (const item of pingInvalid.cases) append("ping-invalid", item, expectCode(() => ping.parseBody(item.json), item.expected_code));
+
   const webRTCInvalid = readTestFixture("webrtc-signal-invalid.json");
   for (const item of webRTCInvalid.cases) {
     if (item.operation === "parse") {
       append("webrtc-signal-invalid", item, expectCode(() => webrtc.parseBody(item.json), item.expected_code));
     } else if (item.operation === "relation") {
-      const { publicA, publicB } = fixedKeys();
+      const { privateA, privateB, publicA, publicB } = fixedKeys();
       const validOffer = webrtc.newOffer(channels.parseMessageID(fixture.message_id), channels.parseSessionID(fixture.session_id), "v=0");
-      const context = webrtc.newSessionContext(validOffer, publicA, publicB);
       const answer = webrtc.parseBody(item.json);
-      append("webrtc-signal-invalid", item, expectCode(() => webrtc.validateRelation(answer, context, publicB), item.expected_code));
+      const offerEnvelope = await inbox.signAndSeal({ channel: channels.inboxChannel(publicB), from_public_key: publicA, protocol: channels.WEBRTC_SIGNAL_PROTOCOL, message_id: channels.parseMessageID(fixture.message_id), issued_at_ms: 1000, expires_at_ms: 2000, body: validOffer }, privateA);
+      const answerEnvelope = await inbox.signAndSeal({ channel: channels.inboxChannel(publicA), from_public_key: publicB, protocol: channels.WEBRTC_SIGNAL_PROTOCOL, message_id: channels.parseMessageID(fixture.message_id), issued_at_ms: 1000, expires_at_ms: 2000, body: answer }, privateB);
+      const offerMessage = await inbox.open(offerEnvelope.channel, inbox.marshalEnvelope(offerEnvelope), privateB, 1500);
+      const answerMessage = await inbox.open(answerEnvelope.channel, inbox.marshalEnvelope(answerEnvelope), privateA, 1500);
+      append("webrtc-signal-invalid", item, expectCode(() => inbox.validateWebRTCRelation(offerMessage, answerMessage), item.expected_code));
     } else {
       assert.fail(`unknown WebRTC fixture operation: ${item.operation}`);
     }
@@ -108,12 +115,7 @@ async function sharedInvalidResults() {
       append("inbox-crypto-invalid", item, expectCode(() => inbox.parseEnvelope(item.channel, envelopeJSON), item.expected_code));
     } else if (item.operation === "open" || item.operation === "open_dispatch") {
       const privateKey = channels.parsePrivateKey(bytesFromHex(item.recipient_private_key_hex));
-      if (item.operation === "open_dispatch") {
-        const opened = await inbox.open(item.channel, envelopeJSON, privateKey, 1500);
-        append("inbox-crypto-invalid", item, await expectCodeAsync(() => inbox.dispatch(opened), item.expected_code));
-      } else {
-        append("inbox-crypto-invalid", item, await expectCodeAsync(() => inbox.open(item.channel, envelopeJSON, privateKey, 1500), item.expected_code));
-      }
+      append("inbox-crypto-invalid", item, await expectCodeAsync(() => inbox.open(item.channel, envelopeJSON, privateKey, 1500), item.expected_code));
     } else {
       assert.fail(`unknown inbox fixture operation: ${item.operation}`);
     }
@@ -134,10 +136,21 @@ function validateSharedValidFixtures() {
 
   const hashValid = readTestFixture("hash-request-valid.json");
   for (const item of hashValid.multiaddr_cases) assert.equal(hashrequest.newMultiaddrLocator(item.address).address, item.address, `multiaddr valid fixture ${item.name}`);
+  for (const item of hashValid.time_boundary_cases) {
+    if (item.expected === "ACCEPT") {
+      assert.doesNotThrow(() => hashrequest.parseAndVerify(item.channel, item.json, item.now_ms), item.name);
+    } else {
+      expectCode(() => hashrequest.parseAndVerify(item.channel, item.json, item.now_ms), item.expected);
+    }
+  }
 
   const appValid = readTestFixture("app-message-valid.json");
   appmessage.parseBody(JSON.stringify(appValid.deliver));
   appmessage.parseBody(JSON.stringify(appValid.ack));
+
+  const pingValid = readTestFixture("ping-valid.json");
+  ping.parseBody(JSON.stringify(pingValid.ping));
+  ping.parseBody(JSON.stringify(pingValid.pong));
 
   const webRTCValid = readTestFixture("webrtc-signal-valid.json");
   for (const signal of webRTCValid.signals) webrtc.parseBody(JSON.stringify({ request_message_id: webRTCValid.request_message_id, session_id: webRTCValid.session_id, signal }));
@@ -171,7 +184,7 @@ async function buildDedupRelations() {
   }, privateA);
   const verifiedPublic = hashrequest.parseAndVerify(publicInput.channel, hashrequest.marshal(publicMessage), publicInput.issued_at_ms + 500);
   const publicKey = hashrequest.dedupKey(verifiedPublic);
-  const publicDedupKey = [publicKey.channel, publicKey.from_public_key, publicKey.message_id];
+  const publicDedupKey = [publicKey.from_public_key, publicKey.message_id];
 
   const privateInput = value.private_deliver;
   assert.equal(privateInput.channel, channels.inboxChannel(publicB));
@@ -204,30 +217,36 @@ async function buildDedupRelations() {
     channels.parseSessionID(sessionInput.session_id),
   );
 
-  const delivery = {
-    from_public_key: channels.parsePublicKey(value.ack.delivery.from_public_key),
-    to_public_key: channels.parsePublicKey(value.ack.delivery.to_public_key),
-    message_id: channels.parseMessageID(value.ack.delivery.message_id),
+  const ackMessage = async (item) => {
+    const from = channels.parsePublicKey(item.from_public_key);
+    const to = channels.parsePublicKey(item.to_public_key);
+    const senderPrivate = from === publicA ? privateA : privateB;
+    const recipientPrivate = to === publicA ? privateA : privateB;
+    const envelope = await inbox.signAndSeal({
+      channel: channels.inboxChannel(to),
+      from_public_key: from,
+      protocol: channels.APP_MESSAGE_PROTOCOL,
+      message_id: channels.newMessageID(),
+      issued_at_ms: 1000,
+      expires_at_ms: 2000,
+      body: appmessage.newAck(channels.parseMessageID(item.acknowledged_message_id)),
+    }, senderPrivate);
+    return inbox.open(envelope.channel, inbox.marshalEnvelope(envelope), recipientPrivate, 1500);
   };
-  const ackContext = (item) => ({
-    from_public_key: channels.parsePublicKey(item.from_public_key),
-    to_public_key: channels.parsePublicKey(item.to_public_key),
-    body: appmessage.newAck(channels.parseMessageID(item.acknowledged_message_id)),
-  });
   assert.equal(value.ack.valid.expected_code, null);
-  appmessage.validateAckRelation(delivery, ackContext(value.ack.valid));
-  const ackInvalid = value.ack.invalid.map((item) => ({
-    name: item.name,
-    code: expectCode(() => appmessage.validateAckRelation(delivery, ackContext(item)), item.expected_code),
-  }));
+  const validAck = await ackMessage(value.ack.valid);
+  inbox.validateAckRelation(opened, validAck);
+  const ackInvalid = [];
+  for (const item of value.ack.invalid) {
+    const invalidAck = await ackMessage(item);
+    ackInvalid.push({ name: item.name, code: expectCode(() => inbox.validateAckRelation(opened, invalidAck), item.expected_code) });
+  }
 
   const sameDigest = channels.parseSHA256Hash(value.conflict.same_digest);
   const differentDigest = channels.parseSHA256Hash(value.conflict.different_digest);
   assert.equal(value.conflict.expected_same_code, null);
-  assert.doesNotThrow(() => appmessage.checkDigestConflict(sameDigest, sameDigest));
   assert.doesNotThrow(() => inbox.checkDigestConflict(sameDigest, sameDigest));
-  const conflictCode = expectCode(() => appmessage.checkDigestConflict(sameDigest, differentDigest), value.conflict.expected_different_code);
-  assert.equal(expectCode(() => inbox.checkDigestConflict(sameDigest, differentDigest), value.conflict.expected_different_code), conflictCode);
+  const conflictCode = expectCode(() => inbox.checkDigestConflict(sameDigest, differentDigest), value.conflict.expected_different_code);
 
   const result = {
     public_dedup_key: publicDedupKey,
@@ -286,7 +305,6 @@ async function build() {
   const verifiedPublic = hashrequest.parseAndVerify(channels.HASH_REQUEST_CHANNEL, publicJSON, fixture.issued_at_ms + 500);
   assert.equal(verifiedPublic.signature, fixture.hash_request.signature);
   assert.equal(verifiedPublic.digest, fixture.hash_request.digest_hex);
-  hashrequest.reviewAdmission(verifiedPublic, publicA);
 
   const body = webrtc.newOffer(messageId, sessionId, "v=0");
   const unsignedPrivate = {
@@ -309,9 +327,8 @@ async function build() {
   const envelopeJSON = textDecoder.decode(inbox.marshalEnvelope(envelope));
   assert.deepEqual(JSON.parse(envelopeJSON), fixture.private_message.envelope);
   const opened = await inbox.open(fixture.channel, envelopeJSON, privateB, fixture.issued_at_ms + 500);
-  const dispatched = inbox.dispatch(opened);
-  assert.equal(dispatched.protocol, channels.WEBRTC_SIGNAL_PROTOCOL);
-  assert.equal(dispatched.body.signal.type, "offer");
+  assert.equal(opened.protocol, channels.WEBRTC_SIGNAL_PROTOCOL);
+  assert.equal(opened.body.signal.type, "offer");
 
   validateSharedValidFixtures();
   const dedup_relations = await buildDedupRelations();
@@ -323,7 +340,6 @@ async function build() {
       json: publicJSON,
       digest_hex: verifiedPublic.digest,
       signature: verifiedPublic.signature,
-      admission_reviewed: true,
     },
     private_message: {
       plaintext_json: plaintextJSON,
@@ -331,7 +347,7 @@ async function build() {
       digest_hex: opened.digest,
       signature: opened.signature,
       opened_protocol: opened.protocol,
-      dispatched_body: "webrtc.signal.offer",
+      opened_body: "webrtc.signal.offer",
     },
     dedup_relations,
     invalid,
@@ -347,7 +363,7 @@ async function verifyGo(path) {
   const opened = await inbox.open(fixture.channel, foreign.private_message.envelope_json, privateB, fixture.issued_at_ms + 500);
   assert.equal(opened.signature, fixture.private_message.signature);
   assert.equal(opened.digest, fixture.private_message.digest_hex);
-  assert.equal(inbox.dispatch(opened).protocol, channels.WEBRTC_SIGNAL_PROTOCOL);
+  assert.equal(opened.protocol, channels.WEBRTC_SIGNAL_PROTOCOL);
   assert.deepEqual(foreign.dedup_relations, await buildDedupRelations());
   assert.deepEqual(foreign.invalid, await expectedInvalid());
 }

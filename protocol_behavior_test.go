@@ -8,7 +8,9 @@ import (
 
 	"github.com/bsv8/ChannelProtocol"
 	"github.com/bsv8/ChannelProtocol/appmessage"
+	"github.com/bsv8/ChannelProtocol/hashrequest"
 	"github.com/bsv8/ChannelProtocol/inbox"
+	"github.com/bsv8/ChannelProtocol/ping"
 	"github.com/bsv8/ChannelProtocol/webrtcsignal"
 )
 
@@ -39,20 +41,20 @@ func TestPublicPrimitivesAndDefensiveCopies(t *testing.T) {
 }
 
 func TestProtocolErrorCodesAndSecurityBoundaries(t *testing.T) {
-	if _, err := channels.ParsePublicKey(strings.ToUpper("0279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798")); !channels.IsErrorCode(err, channels.InvalidPublicKeyCode) {
+	if _, err := channels.ParsePublicKey(strings.ToUpper("0279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798")); !errors.Is(err, channels.ErrInvalidPublicKey) {
 		t.Fatalf("大写公钥错误码错误: %v", err)
 	}
-	if _, err := channels.CanonicalizeJSON([]byte(`{"a":1,"a":2}`)); !channels.IsErrorCode(err, channels.InvalidJSONCode) {
+	if _, err := channels.CanonicalizeJSON([]byte(`{"a":1,"a":2}`)); !errors.Is(err, channels.ErrInvalidJSON) {
 		t.Fatalf("重复字段错误码错误: %v", err)
 	}
-	if _, err := channels.CanonicalizeValue(map[string]any{"bad": string([]byte{0xff})}); !channels.IsErrorCode(err, channels.InvalidJSONCode) {
+	if _, err := channels.CanonicalizeValue(map[string]any{"bad": string([]byte{0xff})}); !errors.Is(err, channels.ErrInvalidJSON) {
 		t.Fatalf("非法 UTF-8 值错误码错误: %v", err)
 	}
-	if _, err := channels.DecodeChannel(channels.HashRequestChannel, []byte(`{"unknown":1}`), nil, 0); !channels.IsErrorCode(err, channels.UnknownFieldCode) {
-		t.Fatalf("公开根入口错误码错误: %v", err)
+	if _, err := hashrequest.ParseAndVerify(channels.HashRequestChannel, []byte(`{"unknown":1}`), 0); !errors.Is(err, channels.ErrUnknownField) {
+		t.Fatalf("公开入口错误码错误: %v", err)
 	}
-	if _, err := channels.DecodeChannel(channels.InboxChannelPrefix+"bad", []byte(`{}`), nil, 0); !channels.IsErrorCode(err, channels.InvalidChannelCode) {
-		t.Fatalf("私密根入口缺少私钥错误码错误: %v", err)
+	if _, err := inbox.ParseEnvelope(channels.InboxChannelPrefix+"bad", []byte(`{}`)); !errors.Is(err, channels.ErrInvalidChannel) {
+		t.Fatalf("私密入口错误码错误: %v", err)
 	}
 }
 
@@ -71,18 +73,38 @@ func TestWebRTCRelationAndAppAckRelation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	context, err := webrtcsignal.NewSessionContext(offer, publicA, publicB)
-	if err != nil {
-		t.Fatal(err)
-	}
 	answer, err := webrtcsignal.NewAnswer(messageID, sessionID, "v=0")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := webrtcsignal.ValidateRelation(answer, context, publicB); err != nil {
+	offerEnvelope, err := inbox.SignAndSeal(inbox.UnsignedPrivateMessage{Channel: channels.InboxChannel(publicB), FromPublicKey: publicA, Protocol: channels.WebRTCSignalProtocol, MessageID: messageID, IssuedAtMs: 1000, ExpiresAtMs: 2000, Body: offer}, privateA)
+	if err != nil {
 		t.Fatal(err)
 	}
-	if err := webrtcsignal.ValidateRelation(answer, context, publicA); !channels.IsErrorCode(err, channels.InvalidRelationCode) {
+	answerEnvelope, err := inbox.SignAndSeal(inbox.UnsignedPrivateMessage{Channel: channels.InboxChannel(publicA), FromPublicKey: publicB, Protocol: channels.WebRTCSignalProtocol, MessageID: messageID, IssuedAtMs: 1000, ExpiresAtMs: 2000, Body: answer}, privateB)
+	if err != nil {
+		t.Fatal(err)
+	}
+	openOffer, err := inbox.Open(offerEnvelope.Channel, mustMarshalEnvelope(t, offerEnvelope), privateB, 1500)
+	if err != nil {
+		t.Fatal(err)
+	}
+	openAnswer, err := inbox.Open(answerEnvelope.Channel, mustMarshalEnvelope(t, answerEnvelope), privateA, 1500)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := inbox.ValidateWebRTCRelation(openOffer, openAnswer); err != nil {
+		t.Fatal(err)
+	}
+	wrongAnswerEnvelope, err := inbox.SignAndSeal(inbox.UnsignedPrivateMessage{Channel: channels.InboxChannel(publicB), FromPublicKey: publicA, Protocol: channels.WebRTCSignalProtocol, MessageID: messageID, IssuedAtMs: 1000, ExpiresAtMs: 2000, Body: answer}, privateA)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wrongAnswer, err := inbox.Open(wrongAnswerEnvelope.Channel, mustMarshalEnvelope(t, wrongAnswerEnvelope), privateB, 1500)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := inbox.ValidateWebRTCRelation(openOffer, wrongAnswer); !errors.Is(err, channels.ErrInvalidRelation) {
 		t.Fatalf("错误 answer 发送者未返回 INVALID_RELATION: %v", err)
 	}
 
@@ -94,25 +116,49 @@ func TestWebRTCRelationAndAppAckRelation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := appmessage.ValidateAckRelation(
-		appmessage.DeliveryContext{FromPublicKey: publicA, ToPublicKey: publicB, MessageID: messageID},
-		appmessage.AckContext{FromPublicKey: publicB, ToPublicKey: publicA, Body: ack},
-	); err != nil {
+	deliverEnvelope, err := inbox.SignAndSeal(inbox.UnsignedPrivateMessage{Channel: channels.InboxChannel(publicB), FromPublicKey: publicA, Protocol: channels.AppMessageProtocol, MessageID: messageID, IssuedAtMs: 1000, ExpiresAtMs: 2000, Body: deliver}, privateA)
+	if err != nil {
+		t.Fatal(err)
+	}
+	deliverMessage, err := inbox.Open(deliverEnvelope.Channel, mustMarshalEnvelope(t, deliverEnvelope), privateB, 1500)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ackEnvelope, err := inbox.SignAndSeal(inbox.UnsignedPrivateMessage{Channel: channels.InboxChannel(publicA), FromPublicKey: publicB, Protocol: channels.AppMessageProtocol, MessageID: messageID, IssuedAtMs: 1000, ExpiresAtMs: 2000, Body: ack}, privateB)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ackMessage, err := inbox.Open(ackEnvelope.Channel, mustMarshalEnvelope(t, ackEnvelope), privateA, 1500)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := inbox.ValidateAckRelation(deliverMessage, ackMessage); err != nil {
 		t.Fatal(err)
 	}
 	badAck, err := appmessage.NewAck(messageID)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := appmessage.ValidateAckRelation(
-		appmessage.DeliveryContext{FromPublicKey: publicA, ToPublicKey: publicB, MessageID: messageID},
-		appmessage.AckContext{FromPublicKey: publicA, ToPublicKey: publicB, Body: badAck},
-	); !channels.IsErrorCode(err, channels.InvalidRelationCode) {
+	badAckEnvelope, err := inbox.SignAndSeal(inbox.UnsignedPrivateMessage{Channel: channels.InboxChannel(publicB), FromPublicKey: publicA, Protocol: channels.AppMessageProtocol, MessageID: messageID, IssuedAtMs: 1000, ExpiresAtMs: 2000, Body: badAck}, privateA)
+	if err != nil {
+		t.Fatal(err)
+	}
+	badAckMessage, err := inbox.Open(badAckEnvelope.Channel, mustMarshalEnvelope(t, badAckEnvelope), privateB, 1500)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := inbox.ValidateAckRelation(deliverMessage, badAckMessage); !errors.Is(err, channels.ErrInvalidRelation) {
 		t.Fatalf("错误 ACK 关系未返回 INVALID_RELATION: %v", err)
 	}
-	_ = privateA
-	_ = privateB
-	_ = deliver
+}
+
+func mustMarshalEnvelope(t *testing.T, envelope inbox.EncryptedEnvelopeV1) []byte {
+	t.Helper()
+	encoded, err := inbox.Marshal(envelope)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return encoded
 }
 
 func TestInboxOpenFailureIsUniform(t *testing.T) {
@@ -146,13 +192,60 @@ func TestInboxOpenFailureIsUniform(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := inbox.Open(envelope.Channel, envelopeJSON, privateA, 1500); !channels.IsErrorCode(err, channels.OpenFailedCode) {
+	if _, err := inbox.Open(envelope.Channel, envelopeJSON, privateA, 1500); !errors.Is(err, channels.ErrOpenFailed) {
 		t.Fatalf("收件者私钥不匹配未统一为 OPEN_FAILED: %v", err)
 	}
 	tampered := append([]byte(nil), envelopeJSON...)
 	tampered[len(tampered)-3] ^= 1
-	if _, err := inbox.Open(envelope.Channel, tampered, privateB, 1500); !channels.IsErrorCode(err, channels.OpenFailedCode) {
+	if _, err := inbox.Open(envelope.Channel, tampered, privateB, 1500); !errors.Is(err, channels.ErrOpenFailed) {
 		t.Fatalf("tag/密文篡改未统一为 OPEN_FAILED: %v", err)
+	}
+}
+
+func TestPingPongRoundTripAndRelation(t *testing.T) {
+	privateA, publicA := testKey(t, 1)
+	privateB, publicB := testKey(t, 2)
+	messageID, err := channels.ParseMessageID("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA")
+	if err != nil {
+		t.Fatal(err)
+	}
+	pingBody := ping.NewPing()
+	pongBody, err := ping.NewPong(messageID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := ping.ParseBody([]byte(`{"type":"ping"}`)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := ping.ParseBody([]byte(`{"type":"pong","ping_message_id":"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"}`)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := ping.ParseBody([]byte(`{"type":"ping","ping_message_id":"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"}`)); !errors.Is(err, channels.ErrUnknownField) {
+		t.Fatalf("Ping 重复 message_id 未返回 UNKNOWN_FIELD: %v", err)
+	}
+
+	pingEnvelope, err := inbox.SignAndSeal(inbox.UnsignedPrivateMessage{Channel: channels.InboxChannel(publicB), FromPublicKey: publicA, Protocol: channels.PingProtocol, MessageID: messageID, IssuedAtMs: 1000, ExpiresAtMs: 2000, Body: pingBody}, privateA)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pongEnvelope, err := inbox.SignAndSeal(inbox.UnsignedPrivateMessage{Channel: channels.InboxChannel(publicA), FromPublicKey: publicB, Protocol: channels.PingProtocol, MessageID: messageID, IssuedAtMs: 1000, ExpiresAtMs: 2000, Body: pongBody}, privateB)
+	if err != nil {
+		t.Fatal(err)
+	}
+	verifiedPing, err := inbox.Open(pingEnvelope.Channel, mustMarshalEnvelope(t, pingEnvelope), privateB, 1500)
+	if err != nil {
+		t.Fatal(err)
+	}
+	verifiedPong, err := inbox.Open(pongEnvelope.Channel, mustMarshalEnvelope(t, pongEnvelope), privateA, 1500)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := inbox.ValidatePongRelation(verifiedPing, verifiedPong); err != nil {
+		t.Fatal(err)
+	}
+	body, ok := verifiedPong.Ping()
+	if !ok || body.Type != ping.TypePong || !body.PingMessageID.Equal(messageID) {
+		t.Fatal("Open 未返回正确 Pong body")
 	}
 }
 

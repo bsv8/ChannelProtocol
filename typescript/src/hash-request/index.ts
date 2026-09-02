@@ -26,10 +26,9 @@ import { cloneAndFreeze, freezeDeep } from "../internal/immutable.js";
 
 export { HASH_REQUEST_CHANNEL };
 
-const verifiedHashRequestBrand = Symbol("bsv8.verified-hash-request");
-const admissionReviewedHashRequestBrand = Symbol("bsv8.admission-reviewed-hash-request");
+const MAX_FUTURE_SKEW_MS = 60 * 1000;
+
 const verifiedHashRequests = new WeakSet<object>();
-const admissionReviewedHashRequests = new WeakSet<object>();
 
 /** locator 的联合 discriminator。 */
 export type LocatorKind = "multiaddr" | "webrtc-sdp";
@@ -83,22 +82,10 @@ export interface SignedHashRequest extends UnsignedHashRequest {
 export interface VerifiedHashRequest extends SignedHashRequest {
   /** 签名逻辑对象的稳定 SHA-256 摘要。 */
   readonly digest: SHA256Hash;
-  /** 仅由 parseAndVerify 创建的运行时品牌，调用方不能伪造。 */
-  readonly [verifiedHashRequestBrand]: true;
 }
 
-/** 已完成外层认证公钥一致性检查的公开消息。 */
-export interface AdmissionReviewedHashRequest extends VerifiedHashRequest {
-  /** 调用方显式传入的外层认证公钥。 */
-  readonly authenticated_public_key: PublicKey;
-  /** 仅由 reviewAdmission 创建的运行时品牌。 */
-  readonly [admissionReviewedHashRequestBrand]: true;
-}
-
-/** 公开消息的 (channel, from_public_key, message_id) 去重键。 */
+/** 公开消息的 (from_public_key, message_id) 去重键。 */
 export interface DeduplicationKey {
-  /** 固定公开频道。 */
-  readonly channel: typeof HASH_REQUEST_CHANNEL;
   /** 消息发送者公钥。 */
   readonly from_public_key: PublicKey;
   /** 消息编号。 */
@@ -145,33 +132,22 @@ export function parseAndVerify(channel: string, input: string | Uint8Array, nowM
   requireObjectKeys(value, ["from_public_key", "message_id", "issued_at_ms", "expires_at_ms", "body", "signature"]);
   const message = parseMessage(value);
   validateUnsigned(message, true);
+  if (message.issued_at_ms > now && message.issued_at_ms - now > MAX_FUTURE_SKEW_MS) throw protocolError(ERROR_CODES.INVALID_TIME, "公开消息发布时间超出允许的未来时钟偏差");
   if (now >= message.expires_at_ms) throw protocolError(ERROR_CODES.MESSAGE_EXPIRED, "公开消息已过期");
   const digest = signingDigest(message);
   verifyDigest(message.from_public_key, digest, message.signature);
   return verifiedHashRequest({ ...message, digest: sha256HashFromBytes(digest) });
 }
 
-/** 检查外层认证公钥与公开消息发送者一致。 */
-export function reviewAdmission(message: VerifiedHashRequest, authenticatedPublicKey: PublicKey): AdmissionReviewedHashRequest {
-  requireVerifiedHashRequest(message);
-  checkIdentity(authenticatedPublicKey, message.from_public_key, "外层认证公钥与 from_public_key 不一致");
-  return admissionReviewedHashRequest({ ...cloneAndFreeze(message), authenticated_public_key: authenticatedPublicKey });
-}
-
 /** 返回公开消息去重键。 */
 export function dedupKey(message: VerifiedHashRequest): DeduplicationKey {
   requireVerifiedHashRequest(message);
-  return freezeDeep({ channel: HASH_REQUEST_CHANNEL, from_public_key: message.from_public_key, message_id: message.message_id });
+  return freezeDeep({ from_public_key: message.from_public_key, message_id: message.message_id });
 }
 
 /** 返回值是否由本 SDK 的 parseAndVerify 创建，供跨模块关系审查使用。 */
 export function isVerifiedHashRequest(value: unknown): value is VerifiedHashRequest {
-  return value !== null && typeof value === "object" && verifiedHashRequests.has(value) && (value as Record<PropertyKey, unknown>)[verifiedHashRequestBrand] === true && Object.isFrozen(value);
-}
-
-/** 返回值是否由 reviewAdmission 创建并完成外层身份审查。 */
-export function isAdmissionReviewedHashRequest(value: unknown): value is AdmissionReviewedHashRequest {
-  return value !== null && typeof value === "object" && admissionReviewedHashRequests.has(value) && (value as Record<PropertyKey, unknown>)[admissionReviewedHashRequestBrand] === true && Object.isFrozen(value);
+  return value !== null && typeof value === "object" && verifiedHashRequests.has(value) && Object.isFrozen(value);
 }
 
 /** 返回已签名逻辑消息摘要。 */
@@ -184,43 +160,14 @@ export function checkDigestConflict(existing: SHA256Hash, incoming: SHA256Hash):
   if (existing !== incoming) throw protocolError(ERROR_CODES.MESSAGE_ID_CONFLICT, "同一公开去重键对应不同已签名内容");
 }
 
-/** Go 风格首字母大写别名，便于跨语言 API 对照。 */
-export const NewMultiaddrLocator = newMultiaddrLocator;
-/** Go 风格首字母大写别名。 */
-export const NewWebRTCSDPLocator = newWebRTCSDPLocator;
-/** Go 风格首字母大写别名，便于跨语言 API 对照。 */
-export const Sign = sign;
-/** Go 风格 Marshal 别名。 */
-export const Marshal = marshal;
-/** Go 风格 ParseAndVerify 别名。 */
-export const ParseAndVerify = parseAndVerify;
-/** Go 风格 ReviewAdmission 别名。 */
-export const ReviewAdmission = reviewAdmission;
-/** Go 风格 DedupKey 别名。 */
-export const DedupKey = dedupKey;
-/** Go 风格 SignedDigest 别名。 */
-export const SignedDigest = signedDigest;
-
-function verifiedHashRequest(value: Omit<VerifiedHashRequest, typeof verifiedHashRequestBrand>): VerifiedHashRequest {
-  const result = { ...cloneAndFreeze(value) } as VerifiedHashRequest;
-  Object.defineProperty(result, verifiedHashRequestBrand, { value: true, enumerable: false, writable: false, configurable: false });
-  const frozen = freezeDeep(result);
+function verifiedHashRequest(value: VerifiedHashRequest): VerifiedHashRequest {
+  const frozen = freezeDeep(cloneAndFreeze(value));
   verifiedHashRequests.add(frozen);
-  return frozen;
-}
-
-function admissionReviewedHashRequest(value: Omit<AdmissionReviewedHashRequest, typeof verifiedHashRequestBrand | typeof admissionReviewedHashRequestBrand>): AdmissionReviewedHashRequest {
-  const result = { ...cloneAndFreeze(value) } as AdmissionReviewedHashRequest;
-  Object.defineProperty(result, verifiedHashRequestBrand, { value: true, enumerable: false, writable: false, configurable: false });
-  Object.defineProperty(result, admissionReviewedHashRequestBrand, { value: true, enumerable: false, writable: false, configurable: false });
-  const frozen = freezeDeep(result);
-  verifiedHashRequests.add(frozen);
-  admissionReviewedHashRequests.add(frozen);
   return frozen;
 }
 
 function requireVerifiedHashRequest(value: unknown): asserts value is VerifiedHashRequest {
-  if (!isVerifiedHashRequest(value) || !(value as unknown as Record<PropertyKey, unknown>)[verifiedHashRequestBrand] || !Object.isFrozen(value)) {
+  if (!isVerifiedHashRequest(value) || !Object.isFrozen(value)) {
     throw protocolError(ERROR_CODES.INVALID_SIGNATURE, "消息不是 SDK 生成的已验证 Hash 请求");
   }
 }

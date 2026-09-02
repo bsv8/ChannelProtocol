@@ -10,6 +10,8 @@ const (
 	WebRTCSignalProtocol = "bsv8.webrtc.signal.v1"
 	// AppMessageProtocol 是应用消息 Deliver/ACK 子协议。
 	AppMessageProtocol = "bsv8.message.v1"
+	// PingProtocol 是 Ping/Pong 收件箱子协议。
+	PingProtocol = "bsv8.ping.v1"
 	// PublicMessageScope 是公开消息签名作用域。
 	PublicMessageScope = "bsv8.public-message.v1"
 	// PrivateMessageScope 是私密消息签名作用域。

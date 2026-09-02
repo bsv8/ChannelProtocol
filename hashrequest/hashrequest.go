@@ -5,7 +5,6 @@ import (
 	"crypto/sha256"
 	stdjson "encoding/json"
 	"fmt"
-	"io"
 
 	"github.com/bsv8/ChannelProtocol/internal/canonicaljson"
 	"github.com/bsv8/ChannelProtocol/internal/encoding"
@@ -16,7 +15,10 @@ import (
 	multiaddr "github.com/multiformats/go-multiaddr"
 )
 
-const maxLifetimeMs int64 = 10 * 60 * 1000
+const (
+	maxLifetimeMs   int64 = 10 * 60 * 1000
+	maxFutureSkewMs int64 = 60 * 1000
+)
 
 // LocatorKind 是公开 Hash 请求的连接位置类型。
 type LocatorKind string
@@ -66,9 +68,6 @@ type SignedMessage struct {
 	Signature encoding.Signature
 }
 
-// HashRequestMessage 是 SignedMessage 的语义别名，便于业务代码阅读。
-type HashRequestMessage = SignedMessage
-
 // VerifiedMessage 表示已完成结构、时间和签名验证的公开消息。
 //
 // 内部快照字段刻意不导出。Go 没有语言级 const struct，因此这里通过私有字段
@@ -79,18 +78,8 @@ type VerifiedMessage struct {
 	verified bool
 }
 
-// AdmissionReviewedMessage 表示额外完成外层认证公钥一致性检查的消息。
-// 内部消息和认证公钥均只能通过值/副本访问。
-type AdmissionReviewedMessage struct {
-	message                VerifiedMessage
-	authenticatedPublicKey encoding.PublicKey
-	reviewed               bool
-}
-
-// DeduplicationKey 是公开消息的 (channel, from_public_key, message_id) 去重键。
+// DeduplicationKey 是公开消息的 (from_public_key, message_id) 去重键。
 type DeduplicationKey struct {
-	// Channel 是固定公开频道。
-	Channel string
 	// FromPublicKey 是消息发送者公钥。
 	FromPublicKey encoding.PublicKey
 	// MessageID 是消息编号。
@@ -141,17 +130,6 @@ func (message VerifiedMessage) Signature() encoding.Signature { return message.s
 
 // Digest 返回验签逻辑对象摘要值。
 func (message VerifiedMessage) Digest() encoding.SHA256Hash { return message.digest }
-
-// IsReviewed 返回该值是否由 ReviewAdmission 成功创建。
-func (message AdmissionReviewedMessage) IsReviewed() bool { return message.reviewed }
-
-// Message 返回经过外层身份审查的公开消息值。
-func (message AdmissionReviewedMessage) Message() VerifiedMessage { return message.message }
-
-// AuthenticatedPublicKey 返回外层认证公钥值。
-func (message AdmissionReviewedMessage) AuthenticatedPublicKey() encoding.PublicKey {
-	return message.authenticatedPublicKey
-}
 
 // Sign 校验待签名消息，并使用发送者长期私钥生成确定性 low-S 签名。
 func Sign(message UnsignedMessage, privateKey encoding.PrivateKey) (SignedMessage, error) {
@@ -226,6 +204,9 @@ func ParseAndVerify(channel string, input []byte, nowMs int64) (VerifiedMessage,
 	if err := validateUnsigned(message.UnsignedMessage); err != nil {
 		return VerifiedMessage{}, err
 	}
+	if message.IssuedAtMs > nowMs && message.IssuedAtMs-nowMs > maxFutureSkewMs {
+		return VerifiedMessage{}, protocolerror.New(protocolerror.InvalidTime, "公开消息发布时间超出允许的未来时钟偏差")
+	}
 	if nowMs >= message.ExpiresAtMs {
 		return VerifiedMessage{}, protocolerror.New(protocolerror.MessageExpired, "公开消息已过期")
 	}
@@ -243,25 +224,9 @@ func ParseAndVerify(channel string, input []byte, nowMs int64) (VerifiedMessage,
 	return VerifiedMessage{signed: cloneSignedMessage(message), digest: hash, verified: true}, nil
 }
 
-// ReviewAdmission 检查外层已认证公钥与公开消息发送者完全一致。
-func (message VerifiedMessage) ReviewAdmission(authenticatedPublicKey encoding.PublicKey) (AdmissionReviewedMessage, error) {
-	if err := message.ensureVerified(); err != nil {
-		return AdmissionReviewedMessage{}, err
-	}
-	if err := encoding.CheckIdentity(authenticatedPublicKey, message.signed.FromPublicKey, "外层认证公钥与 from_public_key 不一致"); err != nil {
-		return AdmissionReviewedMessage{}, err
-	}
-	return AdmissionReviewedMessage{message: message, authenticatedPublicKey: authenticatedPublicKey, reviewed: true}, nil
-}
-
-// ReviewAdmission 是 ReviewAdmission 方法的函数形式，便于调用方按流程组合 API。
-func ReviewAdmission(message VerifiedMessage, authenticatedPublicKey encoding.PublicKey) (AdmissionReviewedMessage, error) {
-	return message.ReviewAdmission(authenticatedPublicKey)
-}
-
 // DedupKey 返回公开消息去重键。
 func (message VerifiedMessage) DedupKey() DeduplicationKey {
-	return DeduplicationKey{Channel: protocol.HashRequestChannel, FromPublicKey: message.signed.FromPublicKey, MessageID: message.signed.MessageID}
+	return DeduplicationKey{FromPublicKey: message.signed.FromPublicKey, MessageID: message.signed.MessageID}
 }
 
 // SignedDigest 返回签名逻辑对象的稳定摘要；该值不含输入 JSON 的字段顺序。
@@ -272,11 +237,6 @@ func (message SignedMessage) SignedDigest() encoding.SHA256Hash {
 	}
 	result, _ := encoding.NewSHA256HashFromBytes(digest[:])
 	return result
-}
-
-// SameContent 判断相同去重键的两份消息是否拥有相同签名内容。
-func SameContent(left, right VerifiedMessage) bool {
-	return left.verified && right.verified && left.digest.Equal(right.digest)
 }
 
 // CheckDigestConflict 在相同去重键对应不同摘要时返回 MESSAGE_ID_CONFLICT。
@@ -552,6 +512,3 @@ func validatePrivateKey(privateKey encoding.PrivateKey) error {
 	}
 	return nil
 }
-
-// NewMessageID 是公开模块的便捷消息编号生成器。
-func NewMessageID(source io.Reader) (encoding.MessageID, error) { return encoding.NewMessageID(source) }

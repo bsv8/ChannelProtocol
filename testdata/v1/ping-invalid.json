@@ -1,0 +1,8 @@
+{
+  "description_zh": "Ping/Pong body 的严格非法输入",
+  "cases": [
+    {"name": "ping has message id", "json": "{\"type\":\"ping\",\"ping_message_id\":\"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\"}", "expected_code": "UNKNOWN_FIELD"},
+    {"name": "pong has bad message id", "json": "{\"type\":\"pong\",\"ping_message_id\":\"bad\"}", "expected_code": "INVALID_MESSAGE_ID"},
+    {"name": "unknown type", "json": "{\"type\":\"heartbeat\"}", "expected_code": "INVALID_BODY"}
+  ]
+}

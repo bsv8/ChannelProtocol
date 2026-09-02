@@ -10,6 +10,7 @@ import (
 	"github.com/bsv8/ChannelProtocol/appmessage"
 	"github.com/bsv8/ChannelProtocol/hashrequest"
 	"github.com/bsv8/ChannelProtocol/inbox"
+	"github.com/bsv8/ChannelProtocol/ping"
 	"github.com/bsv8/ChannelProtocol/webrtcsignal"
 )
 
@@ -136,6 +137,13 @@ func validateSharedValidFixtures(input fixture) error {
 			Name    string `json:"name"`
 			Address string `json:"address"`
 		} `json:"multiaddr_cases"`
+		TimeBoundaryCases []struct {
+			Name     string `json:"name"`
+			Channel  string `json:"channel"`
+			NowMs    int64  `json:"now_ms"`
+			JSON     string `json:"json"`
+			Expected string `json:"expected"`
+		} `json:"time_boundary_cases"`
 	}
 	if err := read("hash-request-valid.json", &hashValid); err != nil {
 		return err
@@ -143,6 +151,18 @@ func validateSharedValidFixtures(input fixture) error {
 	for _, item := range hashValid.MultiaddrCases {
 		if _, err := hashrequest.NewMultiaddrLocator(item.Address); err != nil {
 			return fmt.Errorf("multiaddr valid fixture %s: %w", item.Name, err)
+		}
+	}
+	for _, item := range hashValid.TimeBoundaryCases {
+		err := hashRequestFixtureError(item.Channel, []byte(item.JSON), item.NowMs)
+		if item.Expected == "ACCEPT" {
+			if err != nil {
+				return fmt.Errorf("Hash time fixture %s unexpectedly failed: %w", item.Name, err)
+			}
+			continue
+		}
+		if got := errorCode(err); got != item.Expected {
+			return fmt.Errorf("Hash time fixture %s expected %s got %s", item.Name, item.Expected, got)
 		}
 	}
 
@@ -157,6 +177,20 @@ func validateSharedValidFixtures(input fixture) error {
 		return err
 	}
 	if _, err := appmessage.ParseBody(appValid.Ack); err != nil {
+		return err
+	}
+
+	var pingValid struct {
+		Ping json.RawMessage `json:"ping"`
+		Pong json.RawMessage `json:"pong"`
+	}
+	if err := read("ping-valid.json", &pingValid); err != nil {
+		return err
+	}
+	if _, err := ping.ParseBody(pingValid.Ping); err != nil {
+		return err
+	}
+	if _, err := ping.ParseBody(pingValid.Pong); err != nil {
 		return err
 	}
 
@@ -248,11 +282,29 @@ func sharedInvalidResults(input fixture) ([]errorResult, error) {
 		}
 	}
 
+	var pingInvalid sharedAppInvalidFixture
+	if err := read("ping-invalid.json", &pingInvalid); err != nil {
+		return nil, err
+	}
+	for _, item := range pingInvalid.Cases {
+		if err := appendResult("ping-invalid", item.Name, item.ExpectedCode, pingBodyFixtureError([]byte(item.JSON))); err != nil {
+			return nil, err
+		}
+	}
+
 	publicA, err := channels.ParsePublicKey(input.PublicKeyA)
 	if err != nil {
 		return nil, err
 	}
 	publicB, err := channels.ParsePublicKey(input.PublicKeyB)
+	if err != nil {
+		return nil, err
+	}
+	privateA, err := parsePrivateKey(input.TestOnlyPrivateKeyA)
+	if err != nil {
+		return nil, err
+	}
+	privateB, err := parsePrivateKey(input.TestOnlyPrivateKeyB)
 	if err != nil {
 		return nil, err
 	}
@@ -265,10 +317,6 @@ func sharedInvalidResults(input fixture) ([]errorResult, error) {
 		return nil, err
 	}
 	offer, err := webrtcsignal.NewOffer(messageID, sessionID, "v=0")
-	if err != nil {
-		return nil, err
-	}
-	context, err := webrtcsignal.NewSessionContext(offer, publicA, publicB)
 	if err != nil {
 		return nil, err
 	}
@@ -287,7 +335,23 @@ func sharedInvalidResults(input fixture) ([]errorResult, error) {
 			if parseErr != nil {
 				return nil, fmt.Errorf("WebRTC relation fixture %s 无法先解析: %w", item.Name, parseErr)
 			}
-			itemErr = webrtcsignal.ValidateRelation(body, context, publicB)
+			offerEnvelope, sealErr := inbox.SignAndSeal(inbox.UnsignedPrivateMessage{Channel: channels.InboxChannel(publicB), FromPublicKey: publicA, Protocol: channels.WebRTCSignalProtocol, MessageID: messageID, IssuedAtMs: 1000, ExpiresAtMs: 2000, Body: offer}, privateA)
+			if sealErr != nil {
+				return nil, sealErr
+			}
+			answerEnvelope, sealErr := inbox.SignAndSeal(inbox.UnsignedPrivateMessage{Channel: channels.InboxChannel(publicA), FromPublicKey: publicB, Protocol: channels.WebRTCSignalProtocol, MessageID: messageID, IssuedAtMs: 1000, ExpiresAtMs: 2000, Body: body}, privateB)
+			if sealErr != nil {
+				return nil, sealErr
+			}
+			offerMessage, openErr := inbox.Open(offerEnvelope.Channel, mustMarshalEnvelope(offerEnvelope), privateB, 1500)
+			if openErr != nil {
+				return nil, openErr
+			}
+			answerMessage, openErr := inbox.Open(answerEnvelope.Channel, mustMarshalEnvelope(answerEnvelope), privateA, 1500)
+			if openErr != nil {
+				return nil, openErr
+			}
+			itemErr = inbox.ValidateWebRTCRelation(offerMessage, answerMessage)
 		default:
 			return nil, fmt.Errorf("未知 WebRTC fixture operation: %s", item.Operation)
 		}
@@ -317,8 +381,8 @@ func sharedInvalidResults(input fixture) ([]errorResult, error) {
 			opened, openErr := inbox.Open(item.Channel, item.Envelope, privateKey, 1500)
 			if openErr != nil {
 				itemErr = openErr
-			} else if item.Operation == "open_dispatch" {
-				_, itemErr = inbox.Dispatch(opened)
+			} else {
+				_ = opened
 			}
 		default:
 			return nil, fmt.Errorf("未知 inbox fixture operation: %s", item.Operation)
@@ -391,6 +455,11 @@ func appBodyFixtureError(input []byte) error {
 	return err
 }
 
+func pingBodyFixtureError(input []byte) error {
+	_, err := ping.ParseBody(input)
+	return err
+}
+
 func webrtcBodyFixtureError(input []byte) error {
 	_, err := webrtcsignal.ParseBody(input)
 	return err
@@ -399,4 +468,12 @@ func webrtcBodyFixtureError(input []byte) error {
 func parseEnvelopeFixtureError(channel string, input []byte) error {
 	_, err := inbox.ParseEnvelope(channel, input)
 	return err
+}
+
+func mustMarshalEnvelope(envelope inbox.EncryptedEnvelopeV1) []byte {
+	encoded, err := inbox.Marshal(envelope)
+	if err != nil {
+		panic(err)
+	}
+	return encoded
 }

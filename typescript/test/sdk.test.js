@@ -6,6 +6,7 @@ import * as channels from "../dist/index.js";
 import * as appmessage from "../dist/app-message/index.js";
 import * as hashrequest from "../dist/hash-request/index.js";
 import * as inbox from "../dist/inbox/index.js";
+import * as ping from "../dist/ping/index.js";
 import * as webrtc from "../dist/webrtc-signal/index.js";
 
 const fixture = JSON.parse(fs.readFileSync(new URL("../../testdata/v1/interop-v1.json", import.meta.url), "utf8"));
@@ -99,11 +100,16 @@ test("原语、时间和 Hash 请求严格校验", () => {
   assert(Object.isFrozen(verified.body.locators[0]));
   assert.throws(() => { verified.body.locators[0].kind = "multiaddr"; }, TypeError);
   assert.equal(verified.body.locators[0].kind, "webrtc-sdp");
-  assert.equal(hashrequest.reviewAdmission(verified, verified.from_public_key).authenticated_public_key, verified.from_public_key);
-  assert.throws(() => hashrequest.reviewAdmission({ ...verified }, verified.from_public_key), codeIs("INVALID_SIGNATURE"));
 
   const hashValid = JSON.parse(fs.readFileSync(new URL("../../testdata/v1/hash-request-valid.json", import.meta.url), "utf8"));
   for (const item of hashValid.multiaddr_cases) assert.equal(hashrequest.newMultiaddrLocator(item.address).address, item.address, item.name);
+  for (const item of hashValid.time_boundary_cases) {
+    if (item.expected === "ACCEPT") {
+      assert.doesNotThrow(() => hashrequest.parseAndVerify(item.channel, item.json, item.now_ms), item.name);
+    } else {
+      assert.throws(() => hashrequest.parseAndVerify(item.channel, item.json, item.now_ms), codeIs(item.expected), item.name);
+    }
+  }
   assert.throws(() => hashrequest.parseAndVerify("bsv8.hash.request.v2", encoded, 1500), codeIs("INVALID_CHANNEL"));
   assert.throws(() => hashrequest.parseAndVerify(channels.HASH_REQUEST_CHANNEL, encoded, 2000), codeIs("MESSAGE_EXPIRED"));
   assert.throws(() => hashrequest.parseAndVerify(channels.HASH_REQUEST_CHANNEL, JSON.stringify({ ...JSON.parse(textDecoder.decode(encoded)), unknown: 1 }), 1500), codeIs("UNKNOWN_FIELD"));
@@ -121,10 +127,8 @@ test("私密信封固定向量、统一 OPEN_FAILED 和强类型分派", async (
   assert(Object.isFrozen(opened.body.signal));
   assert.throws(() => { opened.body.signal.sdp = "tampered"; }, TypeError);
   assert.equal(opened.body.signal.sdp, "v=0");
-  const dispatched = inbox.dispatch(opened);
-  assert.equal(dispatched.protocol, channels.WEBRTC_SIGNAL_PROTOCOL);
-  assert.equal(dispatched.body.signal.type, "offer");
-  assert.throws(() => inbox.dispatch({ ...opened }), codeIs("INVALID_SIGNATURE"));
+  assert.equal(opened.protocol, channels.WEBRTC_SIGNAL_PROTOCOL);
+  assert.equal(opened.body.signal.type, "offer");
   await assert.rejects(() => inbox.open(channels.inboxChannel(publicB), envelopeJSON, privateA, 1500), codeIs("OPEN_FAILED"));
   const tampered = JSON.parse(textDecoder.decode(envelopeJSON));
   const ciphertext = atob(tampered.ciphertext.replace(/-/g, "+").replace(/_/g, "/") + "=".repeat((4 - (tampered.ciphertext.length % 4)) % 4));
@@ -133,6 +137,40 @@ test("私密信封固定向量、统一 OPEN_FAILED 和强类型分派", async (
   tampered.ciphertext = channels.base64urlEncode(ciphertextBytes);
   await assert.rejects(() => inbox.open(channels.inboxChannel(publicB), JSON.stringify(tampered), privateB, 1500), codeIs("OPEN_FAILED"));
   assert.throws(() => inbox.parseEnvelope(channels.inboxChannel(publicB), JSON.stringify({ ...tampered, envelope_version: 2 })), codeIs("INVALID_ENVELOPE"));
+});
+
+test("Ping/Pong 复用私密消息外层并按 message_id 关联", async () => {
+  const { privateA, privateB, publicA, publicB } = fixedKeys();
+  const messageId = channels.parseMessageID(fixture.message_id);
+  const pingBody = ping.newPing();
+  const pongBody = ping.newPong(messageId);
+  assert.deepEqual(ping.parseBody('{"type":"ping"}'), pingBody);
+  assert.deepEqual(ping.parseBody(JSON.stringify(pongBody)), pongBody);
+  assert.throws(() => ping.parseBody('{"type":"ping","ping_message_id":"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"}'), codeIs("UNKNOWN_FIELD"));
+
+  const pingEnvelope = await inbox.signAndSeal({
+    channel: channels.inboxChannel(publicB),
+    from_public_key: publicA,
+    protocol: channels.PING_PROTOCOL,
+    message_id: messageId,
+    issued_at_ms: 1000,
+    expires_at_ms: 2000,
+    body: pingBody,
+  }, privateA);
+  const pongEnvelope = await inbox.signAndSeal({
+    channel: channels.inboxChannel(publicA),
+    from_public_key: publicB,
+    protocol: channels.PING_PROTOCOL,
+    message_id: messageId,
+    issued_at_ms: 1000,
+    expires_at_ms: 2000,
+    body: pongBody,
+  }, privateB);
+  const verifiedPing = await inbox.open(pingEnvelope.channel, inbox.marshalEnvelope(pingEnvelope), privateB, 1500);
+  const verifiedPong = await inbox.open(pongEnvelope.channel, inbox.marshalEnvelope(pongEnvelope), privateA, 1500);
+  inbox.validatePongRelation(verifiedPing, verifiedPong);
+  assert.equal(verifiedPong.body.type, "pong");
+  assert.equal(verifiedPong.body.ping_message_id, messageId);
 });
 
 test("统一审查 WebRTC offer 与 Hash 请求关联", async () => {
@@ -202,7 +240,7 @@ test("共享 dedup-and-relations fixture 全量校验去重与关联结果", asy
   }, privateA);
   const verifiedPublic = hashrequest.parseAndVerify(publicInput.channel, hashrequest.marshal(publicMessage), publicInput.issued_at_ms + 500);
   const publicKey = hashrequest.dedupKey(verifiedPublic);
-  assert.deepEqual([publicKey.channel, publicKey.from_public_key, publicKey.message_id], value.expected.public_dedup_key);
+  assert.deepEqual([publicKey.from_public_key, publicKey.message_id], value.expected.public_dedup_key);
 
   const privateInput = value.private_deliver;
   assert.equal(privateInput.channel, channels.inboxChannel(publicB));
@@ -230,35 +268,42 @@ test("共享 dedup-and-relations fixture 全量校验去重与关联结果", asy
   );
   assert.equal(session.key, value.expected.session_key);
 
-  const delivery = {
-    from_public_key: channels.parsePublicKey(value.ack.delivery.from_public_key),
-    to_public_key: channels.parsePublicKey(value.ack.delivery.to_public_key),
-    message_id: channels.parseMessageID(value.ack.delivery.message_id),
+  const ackMessage = async (item) => {
+    const from = channels.parsePublicKey(item.from_public_key);
+    const to = channels.parsePublicKey(item.to_public_key);
+    const senderPrivate = from === publicA ? privateA : privateB;
+    const recipientPrivate = to === publicA ? privateA : privateB;
+    const envelope = await inbox.signAndSeal({
+      channel: channels.inboxChannel(to),
+      from_public_key: from,
+      protocol: channels.APP_MESSAGE_PROTOCOL,
+      message_id: channels.newMessageID(),
+      issued_at_ms: 1000,
+      expires_at_ms: 2000,
+      body: appmessage.newAck(channels.parseMessageID(item.acknowledged_message_id)),
+    }, senderPrivate);
+    return inbox.open(envelope.channel, inbox.marshalEnvelope(envelope), recipientPrivate, 1500);
   };
-  const ackContext = (item) => ({
-    from_public_key: channels.parsePublicKey(item.from_public_key),
-    to_public_key: channels.parsePublicKey(item.to_public_key),
-    body: appmessage.newAck(channels.parseMessageID(item.acknowledged_message_id)),
-  });
   assert.equal(value.ack.valid.expected_code, null);
-  assert.doesNotThrow(() => appmessage.validateAckRelation(delivery, ackContext(value.ack.valid)));
-  const ackInvalid = value.ack.invalid.map((item) => {
-    assert.throws(() => appmessage.validateAckRelation(delivery, ackContext(item)), codeIs(item.expected_code), item.name);
-    return { name: item.name, code: item.expected_code };
-  });
+  const validAck = await ackMessage(value.ack.valid);
+  assert.doesNotThrow(() => inbox.validateAckRelation(opened, validAck));
+  const ackInvalid = [];
+  for (const item of value.ack.invalid) {
+    const invalidAck = await ackMessage(item);
+    assert.throws(() => inbox.validateAckRelation(opened, invalidAck), codeIs(item.expected_code), item.name);
+    ackInvalid.push({ name: item.name, code: item.expected_code });
+  }
   assert.deepEqual(ackInvalid, value.expected.ack_invalid);
 
   const sameDigest = channels.parseSHA256Hash(value.conflict.same_digest);
   const differentDigest = channels.parseSHA256Hash(value.conflict.different_digest);
   assert.equal(value.conflict.expected_same_code, null);
-  assert.doesNotThrow(() => appmessage.checkDigestConflict(sameDigest, sameDigest));
   assert.doesNotThrow(() => inbox.checkDigestConflict(sameDigest, sameDigest));
-  assert.throws(() => appmessage.checkDigestConflict(sameDigest, differentDigest), codeIs(value.conflict.expected_different_code));
   assert.throws(() => inbox.checkDigestConflict(sameDigest, differentDigest), codeIs(value.conflict.expected_different_code));
   assert.equal(value.expected.conflict_code, value.conflict.expected_different_code);
 });
 
-test("WebRTC 四分支、SessionKey 和 ACK 关系保持隔离", () => {
+test("WebRTC 四分支、SessionKey 和 ACK 关系保持隔离", async () => {
   const requestId = channels.parseMessageID(fixture.message_id);
   const sessionId = channels.parseSessionID(fixture.session_id);
   const signals = [
@@ -268,25 +313,18 @@ test("WebRTC 四分支、SessionKey 和 ACK 关系保持隔离", () => {
     webrtc.newEndOfCandidates(requestId, sessionId),
   ];
   for (const signal of signals) assert.deepEqual(webrtc.parseBody(textDecoder.decode(channels.canonicalizeValue(signal))), signal);
-  const { publicA, publicB } = fixedKeys();
-  const context = webrtc.newSessionContext(signals[0], publicA, publicB);
-  webrtc.validateRelation(signals[1], context, publicB);
-  assert.throws(() => webrtc.validateRelation(signals[1], context, publicA), codeIs("INVALID_RELATION"));
+  const { privateA, privateB, publicA, publicB } = fixedKeys();
+  const offerEnvelope = await inbox.signAndSeal({ channel: channels.inboxChannel(publicB), from_public_key: publicA, protocol: channels.WEBRTC_SIGNAL_PROTOCOL, message_id: requestId, issued_at_ms: 1000, expires_at_ms: 2000, body: signals[0] }, privateA);
+  const answerEnvelope = await inbox.signAndSeal({ channel: channels.inboxChannel(publicA), from_public_key: publicB, protocol: channels.WEBRTC_SIGNAL_PROTOCOL, message_id: requestId, issued_at_ms: 1000, expires_at_ms: 2000, body: signals[1] }, privateB);
+  const verifiedOffer = await inbox.open(offerEnvelope.channel, inbox.marshalEnvelope(offerEnvelope), privateB, 1500);
+  const verifiedAnswer = await inbox.open(answerEnvelope.channel, inbox.marshalEnvelope(answerEnvelope), privateA, 1500);
+  inbox.validateWebRTCRelation(verifiedOffer, verifiedAnswer);
   const app = appmessage.newDeliver({ sdp: { application: true } });
   assert.equal(app.type, "deliver");
   const ack = appmessage.newAck(requestId);
-  appmessage.validateAckRelation({ from_public_key: publicA, to_public_key: publicB, message_id: requestId }, { from_public_key: publicB, to_public_key: publicA, body: ack });
-  assert.throws(() => appmessage.validateAckRelation({ from_public_key: publicA, to_public_key: publicB, message_id: requestId }, { from_public_key: publicA, to_public_key: publicB, body: ack }), codeIs("INVALID_RELATION"));
-  assert.throws(() => appmessage.checkDigestConflict(channels.parseSHA256Hash("0".repeat(64)), channels.parseSHA256Hash("1".repeat(64))), codeIs("MESSAGE_ID_CONFLICT"));
-});
-
-test("注册表与机器可读映射一致", () => {
-  const source = JSON.parse(fs.readFileSync(new URL("../../protocols.json", import.meta.url), "utf8"));
-  assert.equal(source.protocols.length, channels.PROTOCOL_REGISTRY.length);
-  for (const [index, item] of source.protocols.entries()) {
-    assert.equal(channels.PROTOCOL_REGISTRY[index].identifier, item.identifier);
-    assert.equal(channels.PROTOCOL_REGISTRY[index].exportPath, item.typescript_export);
-  }
+  assert.equal(ack.type, "ack");
+  assert.throws(() => inbox.validateWebRTCRelation(verifiedOffer, verifiedOffer), codeIs("INVALID_RELATION"));
+  assert.throws(() => inbox.checkDigestConflict(channels.parseSHA256Hash("0".repeat(64)), channels.parseSHA256Hash("1".repeat(64))), codeIs("MESSAGE_ID_CONFLICT"));
 });
 
 test("共享协议 invalid fixture 全量返回冻结错误码", async () => {
@@ -304,11 +342,14 @@ test("共享协议 invalid fixture 全量返回冻结错误码", async () => {
     if (item.operation === "parse") {
       assert.throws(() => webrtc.parseBody(item.json), codeIs(item.expected_code), item.name);
     } else if (item.operation === "relation") {
-      const { publicA, publicB } = fixedKeys();
+      const { privateA, privateB, publicA, publicB } = fixedKeys();
       const validOffer = webrtc.newOffer(channels.parseMessageID(fixture.message_id), channels.parseSessionID(fixture.session_id), "v=0");
-      const context = webrtc.newSessionContext(validOffer, publicA, publicB);
       const answer = webrtc.parseBody(item.json);
-      assert.throws(() => webrtc.validateRelation(answer, context, publicB), codeIs(item.expected_code), item.name);
+      const offerEnvelope = await inbox.signAndSeal({ channel: channels.inboxChannel(publicB), from_public_key: publicA, protocol: channels.WEBRTC_SIGNAL_PROTOCOL, message_id: channels.parseMessageID(fixture.message_id), issued_at_ms: 1000, expires_at_ms: 2000, body: validOffer }, privateA);
+      const answerEnvelope = await inbox.signAndSeal({ channel: channels.inboxChannel(publicA), from_public_key: publicB, protocol: channels.WEBRTC_SIGNAL_PROTOCOL, message_id: channels.parseMessageID(fixture.message_id), issued_at_ms: 1000, expires_at_ms: 2000, body: answer }, privateB);
+      const offerMessage = await inbox.open(offerEnvelope.channel, inbox.marshalEnvelope(offerEnvelope), privateB, 1500);
+      const answerMessage = await inbox.open(answerEnvelope.channel, inbox.marshalEnvelope(answerEnvelope), privateA, 1500);
+      assert.throws(() => inbox.validateWebRTCRelation(offerMessage, answerMessage), codeIs(item.expected_code), item.name);
     } else {
       assert.fail(`unknown WebRTC fixture operation: ${item.operation}`);
     }
@@ -322,11 +363,6 @@ test("共享协议 invalid fixture 全量返回冻结错误码", async () => {
       continue;
     }
     const privateKey = channels.parsePrivateKey(bytesFromHex(item.recipient_private_key_hex));
-    if (item.operation === "open_dispatch") {
-      const opened = await inbox.open(item.channel, envelopeJSON, privateKey, 1500);
-      assert.throws(() => inbox.dispatch(opened), codeIs(item.expected_code), item.name);
-      continue;
-    }
     await assert.rejects(() => inbox.open(item.channel, envelopeJSON, privateKey, 1500), codeIs(item.expected_code), item.name);
   }
 

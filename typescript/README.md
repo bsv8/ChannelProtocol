@@ -1,30 +1,33 @@
 # `bsv8-channel-protocol`
 
-BSV8 三方频道 V1 的 TypeScript SDK。协议字段采用 snake_case，并在源码与生成的 `.d.ts`
-旁边提供中文注释：例如 `from_public_key` 是发送者长期压缩公钥，`message_id` 是消息去重
-编号，`issued_at_ms` / `expires_at_ms` 是 Unix 毫秒，`body` 是对应子协议正文。
+Channel Protocol V1 的 TypeScript SDK，项目包版本为 `0.2.0`。
+
+目标边界：
+
+- libp2p 公钥是 SSP 调用者和付款身份，不进入本包；
+- CP 消息自己携带作者公钥、message_id、时间和签名；
+- SSP 身份 A 可以提交 CP 作者 B 的报文；
+- 本包不依赖 SSP package。
 
 公开子路径：
 
-| 导入路径 | 中文职责 |
+| 导入路径 | 职责 |
 |---|---|
-| `bsv8-channel-protocol/hash-request` | 公开 Hash 请求签名、验签和 locator |
-| `bsv8-channel-protocol/inbox` | 私密信封、签名、长期密钥加密和解密 |
-| `bsv8-channel-protocol/webrtc-signal` | WebRTC offer、answer、ICE、会话关系 |
-| `bsv8-channel-protocol/app-message` | Deliver、ACK、去重和 ACK 关系 |
+| `bsv8-channel-protocol/hash-request` | 自包含签名 Hash 消息 |
+| `bsv8-channel-protocol/inbox` | 带唯一发送者公钥的信封、私密签名消息和加解密 |
+| `bsv8-channel-protocol/webrtc-signal` | WebRTC SDP/ICE body |
+| `bsv8-channel-protocol/app-message` | Deliver/ACK body |
+| `bsv8-channel-protocol/ping` | Ping/Pong body |
 
-`sealSigned`、`signAndSeal`、`open` 使用 Web Crypto，因此返回 `Promise`。SDK 的公开类型
-使用 `Uint8Array`，不使用 Node-only `Buffer` 语义；生产随机源是 `crypto.getRandomValues`，
-测试可传入 `fixedRandom`。V1 当前只承诺 Node.js 20+，尚未声明浏览器运行时支持。
-`parseAndVerify`、`open` 的 Verified 结果会递归复制并冻结；`dispatch`、外层 admission 和
-WebRTC/Hash 关联审查还会检查 SDK 运行时 brand，不能用普通对象冒充已验证结果。
-V1 使用长期密钥 ECDH，不承诺前向安全。
+Inbox 信封包含 `envelope_version/from_public_key/kdf_salt/nonce/ciphertext`；解密后的
+PrivateMessage 包含 `protocol/message_id/issued_at_ms/expires_at_ms/body/signature`。
+发送者公钥只在完整信封出现一次。
+
+> 当前工作区仍含“CP 公共头上移 SSP”的早期实验实现。按约定不回退；后续施工应按总设计
+> 恢复上述 CP 自包含边界。本说明描述目标 API。
 
 ```sh
 npm ci
 npm test
 npm pack --dry-run
 ```
-
-跨语言固定向量位于上一级 `../testdata/v1/`，不要复制到 npm 包内。完整协议说明见
-`../docs/v1/`。

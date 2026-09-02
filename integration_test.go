@@ -71,8 +71,8 @@ func TestHashAndInboxRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := verifiedPublic.ReviewAdmission(senderPublic); err != nil {
-		t.Fatal(err)
+	if !verifiedPublic.IsVerified() {
+		t.Fatal("公开消息未完成验签")
 	}
 
 	sessionID, err := channels.ParseSessionID("CQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQk")
@@ -103,22 +103,16 @@ func TestHashAndInboxRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	dispatched, err := inbox.Dispatch(opened)
-	if err != nil {
-		t.Fatal(err)
+	if opened.Protocol() != channels.WebRTCSignalProtocol {
+		t.Fatalf("unexpected protocol: %s", opened.Protocol())
 	}
-	if dispatched.Protocol() != channels.WebRTCSignalProtocol {
-		t.Fatalf("unexpected protocol: %s", dispatched.Protocol())
-	}
-	if _, ok := dispatched.WebRTCSignal(); !ok {
-		t.Fatal("dispatch did not return WebRTC body")
+	if _, ok := opened.WebRTCSignal(); !ok {
+		t.Fatal("open did not return WebRTC body")
 	}
 
 	content, err := appmessage.NewDeliver(map[string]any{"sdp": "application data", "n": 1})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if content.MessageType() != appmessage.MessageTypeDeliver {
-		t.Fatal("unexpected app body type")
-	}
+	_ = content
 }

@@ -2,6 +2,7 @@ package channels_test
 
 import (
 	"bytes"
+	"errors"
 	"testing"
 
 	"github.com/bsv8/ChannelProtocol"
@@ -50,16 +51,6 @@ func TestVerifiedSnapshotsCannotBeMutated(t *testing.T) {
 	if got := verifiedPublic.Body().Locators[0].Kind; got != hashrequest.LocatorWebRTCSDP {
 		t.Fatalf("验签后的 Hash body 被外部副本改写: %s", got)
 	}
-	reviewed, err := hashrequest.ReviewAdmission(verifiedPublic, publicA)
-	if err != nil || !reviewed.IsReviewed() {
-		t.Fatalf("AdmissionReviewed 构造失败: %v", err)
-	}
-	reviewedBody := reviewed.Message().Body()
-	reviewedBody.Locators[0].Kind = hashrequest.LocatorMultiaddr
-	if got := reviewed.Message().Body().Locators[0].Kind; got != hashrequest.LocatorWebRTCSDP {
-		t.Fatalf("AdmissionReviewed body 被外部副本改写: %s", got)
-	}
-
 	content, err := appmessage.NewDeliver(map[string]any{"nested": map[string]any{"value": "before"}})
 	if err != nil {
 		t.Fatal(err)
@@ -91,17 +82,13 @@ func TestVerifiedSnapshotsCannotBeMutated(t *testing.T) {
 		t.Fatal("Open 后 body JSON 返回了内部可写引用")
 	}
 
-	dispatched, err := inbox.Dispatch(opened)
-	if err != nil {
-		t.Fatal(err)
-	}
-	decoded, ok := dispatched.AppMessage()
+	decoded, ok := opened.AppMessage()
 	if !ok {
-		t.Fatal("Dispatch 没有返回应用 body")
+		t.Fatal("Open 没有返回应用 body")
 	}
 	delivered, ok := decoded.(appmessage.DeliverBody)
 	if !ok {
-		t.Fatalf("Dispatch 返回了错误应用分支: %T", decoded)
+		t.Fatalf("Open 返回了错误应用分支: %T", decoded)
 	}
 	nested, ok := delivered.Content.(map[string]strictjson.JSONValue)
 	if !ok {
@@ -112,17 +99,17 @@ func TestVerifiedSnapshotsCannotBeMutated(t *testing.T) {
 		t.Fatalf("解析后的嵌套对象类型错误: %T", nested["nested"])
 	}
 	nestedValue["value"] = "after"
-	decodedAgain, ok := dispatched.AppMessage()
+	decodedAgain, ok := opened.AppMessage()
 	if !ok {
 		t.Fatal("第二次读取应用 body 失败")
 	}
 	deliveredAgain := decodedAgain.(appmessage.DeliverBody)
 	nestedAgain := deliveredAgain.Content.(map[string]strictjson.JSONValue)["nested"].(map[string]strictjson.JSONValue)
 	if nestedAgain["value"] != "before" {
-		t.Fatal("Dispatch 返回的嵌套 content 改写了已验证快照")
+		t.Fatal("Open 返回的嵌套 content 改写了已验证快照")
 	}
-	if _, err := inbox.Dispatch(inbox.VerifiedPrivateMessage{}); !channels.IsErrorCode(err, channels.InvalidSignatureCode) {
-		t.Fatalf("伪造 VerifiedPrivateMessage 未被拒绝: %v", err)
+	if _, ok := (inbox.VerifiedPrivateMessage{}).AppMessage(); ok {
+		t.Fatal("零值 VerifiedPrivateMessage 被当成应用消息")
 	}
 }
 
@@ -183,7 +170,7 @@ func TestReviewOfferForHashRequest(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	key, err := channels.ReviewOfferForHashRequest(verifiedRequest, verifiedOffer, 1500)
+	key, err := inbox.ReviewOfferForHashRequest(verifiedRequest, verifiedOffer, 1500)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -213,10 +200,10 @@ func TestReviewOfferForHashRequest(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := channels.ReviewOfferForHashRequest(verifiedNoWebRTC, verifiedOffer, 1500); !channels.IsErrorCode(err, channels.InvalidRelationCode) {
+	if _, err := inbox.ReviewOfferForHashRequest(verifiedNoWebRTC, verifiedOffer, 1500); !errors.Is(err, channels.ErrInvalidRelation) {
 		t.Fatalf("缺少 webrtc-sdp locator 未被拒绝: %v", err)
 	}
-	if _, err := channels.ReviewOfferForHashRequest(verifiedRequest, verifiedOffer, 2000); !channels.IsErrorCode(err, channels.MessageExpiredCode) {
+	if _, err := inbox.ReviewOfferForHashRequest(verifiedRequest, verifiedOffer, 2000); !errors.Is(err, channels.ErrMessageExpired) {
 		t.Fatalf("过期 Hash 请求未被拒绝: %v", err)
 	}
 }

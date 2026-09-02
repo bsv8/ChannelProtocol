@@ -6,6 +6,7 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"os"
 	"testing"
 
@@ -16,6 +17,7 @@ import (
 	"github.com/bsv8/ChannelProtocol/internal/canonicaljson"
 	"github.com/bsv8/ChannelProtocol/internal/cryptobox"
 	"github.com/bsv8/ChannelProtocol/internal/secp256k1"
+	"github.com/bsv8/ChannelProtocol/ping"
 	"github.com/bsv8/ChannelProtocol/webrtcsignal"
 )
 
@@ -133,7 +135,7 @@ func TestSharedPrimitiveInvalidFixtures(t *testing.T) {
 		default:
 			t.Fatalf("未知 primitive operation: %s", item.Operation)
 		}
-		if err == nil || !channels.IsErrorCode(err, channels.ErrorCode(item.Code)) {
+		if !errorHasCode(err, item.Code) {
 			t.Fatalf("primitive fixture %s expected %s got %v", item.Name, item.Code, err)
 		}
 	}
@@ -180,6 +182,40 @@ func TestSharedNamedInvalidFixtures(t *testing.T) {
 		}
 	}
 
+	var pingValid struct {
+		Ping json.RawMessage `json:"ping"`
+		Pong json.RawMessage `json:"pong"`
+	}
+	pingValid = readFixture[struct {
+		Ping json.RawMessage `json:"ping"`
+		Pong json.RawMessage `json:"pong"`
+	}](t, "ping-valid.json")
+	if _, err := ping.ParseBody(pingValid.Ping); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := ping.ParseBody(pingValid.Pong); err != nil {
+		t.Fatal(err)
+	}
+	var pingFixture struct {
+		Cases []struct {
+			Name string `json:"name"`
+			JSON string `json:"json"`
+			Code string `json:"expected_code"`
+		} `json:"cases"`
+	}
+	pingFixture = readFixture[struct {
+		Cases []struct {
+			Name string `json:"name"`
+			JSON string `json:"json"`
+			Code string `json:"expected_code"`
+		} `json:"cases"`
+	}](t, "ping-invalid.json")
+	for _, item := range pingFixture.Cases {
+		if err := mustErrorValue(pingBodyError([]byte(item.JSON)), item.Code); err != nil {
+			t.Fatalf("Ping fixture %s: %v", item.Name, err)
+		}
+	}
+
 	var webrtcFixture struct {
 		Cases []struct {
 			Name      string `json:"name"`
@@ -215,15 +251,29 @@ func TestSharedNamedInvalidFixtures(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			context, err := webrtcsignal.NewSessionContext(offer, testPublicKey(t, 1), testPublicKey(t, 2))
-			if err != nil {
-				t.Fatal(err)
-			}
 			answer, err := webrtcsignal.ParseBody([]byte(item.JSON))
 			if err != nil {
 				t.Fatal(err)
 			}
-			if err := mustErrorValue(webrtcsignal.ValidateRelation(answer, context, testPublicKey(t, 2)), item.Code); err != nil {
+			privateA, publicA := testKey(t, 1)
+			privateB, publicB := testKey(t, 2)
+			offerEnvelope, err := inbox.SignAndSeal(inbox.UnsignedPrivateMessage{Channel: channels.InboxChannel(publicB), FromPublicKey: publicA, Protocol: channels.WebRTCSignalProtocol, MessageID: messageID, IssuedAtMs: 1000, ExpiresAtMs: 2000, Body: offer}, privateA)
+			if err != nil {
+				t.Fatal(err)
+			}
+			answerEnvelope, err := inbox.SignAndSeal(inbox.UnsignedPrivateMessage{Channel: channels.InboxChannel(publicA), FromPublicKey: publicB, Protocol: channels.WebRTCSignalProtocol, MessageID: messageID, IssuedAtMs: 1000, ExpiresAtMs: 2000, Body: answer}, privateB)
+			if err != nil {
+				t.Fatal(err)
+			}
+			offerMessage, err := inbox.Open(offerEnvelope.Channel, mustMarshalEnvelope(t, offerEnvelope), privateB, 1500)
+			if err != nil {
+				t.Fatal(err)
+			}
+			answerMessage, err := inbox.Open(answerEnvelope.Channel, mustMarshalEnvelope(t, answerEnvelope), privateA, 1500)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := mustErrorValue(inbox.ValidateWebRTCRelation(offerMessage, answerMessage), item.Code); err != nil {
 				t.Fatalf("WebRTC fixture %s: %v", item.Name, err)
 			}
 		default:
@@ -236,16 +286,42 @@ func TestSharedNamedInvalidFixtures(t *testing.T) {
 			Name    string `json:"name"`
 			Address string `json:"address"`
 		} `json:"multiaddr_cases"`
+		TimeBoundaryCases []struct {
+			Name     string `json:"name"`
+			Channel  string `json:"channel"`
+			NowMs    int64  `json:"now_ms"`
+			JSON     string `json:"json"`
+			Expected string `json:"expected"`
+		} `json:"time_boundary_cases"`
 	}
 	hashValid = readFixture[struct {
 		MultiaddrCases []struct {
 			Name    string `json:"name"`
 			Address string `json:"address"`
 		} `json:"multiaddr_cases"`
+		TimeBoundaryCases []struct {
+			Name     string `json:"name"`
+			Channel  string `json:"channel"`
+			NowMs    int64  `json:"now_ms"`
+			JSON     string `json:"json"`
+			Expected string `json:"expected"`
+		} `json:"time_boundary_cases"`
 	}](t, "hash-request-valid.json")
 	for _, item := range hashValid.MultiaddrCases {
 		if _, err := hashrequest.NewMultiaddrLocator(item.Address); err != nil {
 			t.Fatalf("multiaddr fixture %s: %v", item.Name, err)
+		}
+	}
+	for _, item := range hashValid.TimeBoundaryCases {
+		err := hashRequestError(item.Channel, []byte(item.JSON), item.NowMs)
+		if item.Expected == "ACCEPT" {
+			if err != nil {
+				t.Fatalf("Hash time fixture %s: unexpected error: %v", item.Name, err)
+			}
+			continue
+		}
+		if fixtureErr := mustErrorValue(err, item.Expected); fixtureErr != nil {
+			t.Fatalf("Hash time fixture %s: %v", item.Name, fixtureErr)
 		}
 	}
 
@@ -388,8 +464,8 @@ func TestSharedInboxCryptoFixtureAndInvalidCases(t *testing.T) {
 			opened, openErr := inbox.Open(channel, envelopeInput, privateKey, 1500)
 			if openErr != nil {
 				err = openErr
-			} else if item.Operation == "open_dispatch" {
-				_, err = inbox.Dispatch(opened)
+			} else {
+				_ = opened
 			}
 		default:
 			t.Fatalf("未知 inbox fixture operation: %s", item.Operation)
@@ -494,6 +570,11 @@ func appBodyError(input []byte) error {
 	return err
 }
 
+func pingBodyError(input []byte) error {
+	_, err := ping.ParseBody(input)
+	return err
+}
+
 func webrtcBodyError(input []byte) error {
 	_, err := webrtcsignal.ParseBody(input)
 	return err
@@ -509,11 +590,16 @@ func openError(channel string, input []byte, privateKey channels.PrivateKey, now
 	return err
 }
 
+func errorHasCode(err error, expected string) bool {
+	var structured *channels.ChannelProtocolError
+	return err != nil && errors.As(err, &structured) && string(structured.Code) == expected
+}
+
 func mustErrorValue(err error, expected string) error {
 	if err == nil {
 		return &fixtureError{message: "expected error " + expected}
 	}
-	if !channels.IsErrorCode(err, channels.ErrorCode(expected)) {
+	if !errorHasCode(err, expected) {
 		return &fixtureError{message: "expected " + expected + " got " + err.Error()}
 	}
 	return nil

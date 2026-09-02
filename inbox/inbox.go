@@ -16,6 +16,7 @@ import (
 	"github.com/bsv8/ChannelProtocol/internal/protocolerror"
 	"github.com/bsv8/ChannelProtocol/internal/secp256k1"
 	"github.com/bsv8/ChannelProtocol/internal/strictjson"
+	"github.com/bsv8/ChannelProtocol/ping"
 	"github.com/bsv8/ChannelProtocol/webrtcsignal"
 )
 
@@ -30,10 +31,8 @@ const (
 )
 
 // PrivateBody 是可进入私密消息的强类型子协议 body。
-// 仅内置 WebRTCSignalV1Body、DeliverBody 和 AckBody 实现此接口。
+// 仅内置 WebRTCSignalV1Body、DeliverBody、AckBody 和 Ping Body 实现此接口。
 type PrivateBody interface {
-	// ProtocolName 返回 body 绑定的子协议名称。
-	ProtocolName() string
 	// JSONValue 返回不含公共消息头的 JSON 值。
 	JSONValue() any
 	// Validate 检查 body 的全部字段。
@@ -64,13 +63,6 @@ func (envelope EncryptedEnvelopeV1) Ciphertext() []byte {
 	return append([]byte(nil), envelope.ciphertext...)
 }
 
-// AdmissionReviewedEnvelope 表示额外完成外层认证公钥一致性检查的信封。
-type AdmissionReviewedEnvelope struct {
-	envelope               EncryptedEnvelopeV1
-	authenticatedPublicKey encoding.PublicKey
-	reviewed               bool
-}
-
 // UnsignedPrivateMessage 是待签名的私密消息公共壳。
 type UnsignedPrivateMessage struct {
 	// Channel 是签名和 ECDH 绑定的实际目标 inbox channel。
@@ -96,11 +88,7 @@ type SignedPrivateMessage struct {
 	Signature encoding.Signature
 }
 
-// PrivateMessage 是 SignedPrivateMessage 的语义别名。
-type PrivateMessage = SignedPrivateMessage
-
-// VerifiedPrivateMessage 是 Open 完成解密、时间和签名验证后的低层 raw body 结果。
-// Body 只作为低层分层 API 使用；业务入口应使用 Dispatch 得到强类型 body。
+// VerifiedPrivateMessage 是 Open 完成解密、时间、签名验证和固定协议分派后的唯一结果。
 type VerifiedPrivateMessage struct {
 	channel       string
 	fromPublicKey encoding.PublicKey
@@ -115,34 +103,9 @@ type VerifiedPrivateMessage struct {
 	verified      bool
 }
 
-// DecodedBody 是 Dispatch 返回的强类型协议正文接口，不返回 map。
-type DecodedBody interface {
-	// ProtocolName 返回正文绑定的 protocol。
-	ProtocolName() string
-	// JSONValue 返回正文 JSON 值。
-	JSONValue() any
-	// Validate 返回正文校验结果。
-	Validate() error
-}
-
-// DecodedInboxMessage 是强类型分派结果；Body 只会是一个已注册子协议类型。
-type DecodedInboxMessage struct {
-	channel       string
-	fromPublicKey encoding.PublicKey
-	toPublicKey   encoding.PublicKey
-	protocolName  string
-	messageID     encoding.MessageID
-	issuedAtMs    int64
-	expiresAtMs   int64
-	bodyJSON      []byte
-	signature     encoding.Signature
-	digest        encoding.SHA256Hash
-	decoded       bool
-}
-
 // WebRTCSignal 返回 WebRTC 强类型 body；若当前不是 WebRTC 则 ok=false。
-func (message DecodedInboxMessage) WebRTCSignal() (webrtcsignal.WebRTCSignalV1Body, bool) {
-	if !message.decoded || message.protocolName != protocol.WebRTCSignalProtocol {
+func (message VerifiedPrivateMessage) WebRTCSignal() (webrtcsignal.WebRTCSignalV1Body, bool) {
+	if !message.verified || message.protocolName != protocol.WebRTCSignalProtocol {
 		return webrtcsignal.WebRTCSignalV1Body{}, false
 	}
 	body, err := webrtcsignal.ParseBody(message.bodyJSON)
@@ -150,11 +113,20 @@ func (message DecodedInboxMessage) WebRTCSignal() (webrtcsignal.WebRTCSignalV1Bo
 }
 
 // AppMessage 返回应用消息强类型 body；若当前不是应用消息则 ok=false。
-func (message DecodedInboxMessage) AppMessage() (appmessage.MessageV1Body, bool) {
-	if !message.decoded || message.protocolName != protocol.AppMessageProtocol {
+func (message VerifiedPrivateMessage) AppMessage() (appmessage.MessageV1Body, bool) {
+	if !message.verified || message.protocolName != protocol.AppMessageProtocol {
 		return nil, false
 	}
 	body, err := appmessage.ParseBody(message.bodyJSON)
+	return body, err == nil
+}
+
+// Ping 返回 Ping/Pong 强类型 body；若当前不是 Ping/Pong 则 ok=false。
+func (message VerifiedPrivateMessage) Ping() (ping.Body, bool) {
+	if !message.verified || message.protocolName != protocol.PingProtocol {
+		return ping.Body{}, false
+	}
+	body, err := ping.ParseBody(message.bodyJSON)
 	return body, err == nil
 }
 
@@ -194,52 +166,6 @@ func (message VerifiedPrivateMessage) Signature() encoding.Signature { return me
 
 // Digest 返回签名逻辑对象摘要值。
 func (message VerifiedPrivateMessage) Digest() encoding.SHA256Hash { return message.digest }
-
-// IsDecoded 返回该值是否由 Dispatch 成功创建。
-func (message DecodedInboxMessage) IsDecoded() bool { return message.decoded }
-
-// Channel 返回实际收件箱频道。
-func (message DecodedInboxMessage) Channel() string { return message.channel }
-
-// FromPublicKey 返回信封发送者公钥值。
-func (message DecodedInboxMessage) FromPublicKey() encoding.PublicKey { return message.fromPublicKey }
-
-// ToPublicKey 返回 channel 目标公钥值。
-func (message DecodedInboxMessage) ToPublicKey() encoding.PublicKey { return message.toPublicKey }
-
-// Protocol 返回强类型分派使用的子协议名称。
-func (message DecodedInboxMessage) Protocol() string { return message.protocolName }
-
-// MessageID 返回私密消息编号值。
-func (message DecodedInboxMessage) MessageID() encoding.MessageID { return message.messageID }
-
-// IssuedAtMs 返回发布时间 Unix 毫秒。
-func (message DecodedInboxMessage) IssuedAtMs() int64 { return message.issuedAtMs }
-
-// ExpiresAtMs 返回过期时间 Unix 毫秒。
-func (message DecodedInboxMessage) ExpiresAtMs() int64 { return message.expiresAtMs }
-
-// BodyJSON 返回规范 JCS body UTF-8 副本。
-func (message DecodedInboxMessage) BodyJSON() []byte { return append([]byte(nil), message.bodyJSON...) }
-
-// Signature 返回业务签名值。
-func (message DecodedInboxMessage) Signature() encoding.Signature { return message.signature }
-
-// Digest 返回签名逻辑对象摘要值。
-func (message DecodedInboxMessage) Digest() encoding.SHA256Hash { return message.digest }
-
-// Envelope 返回审查过的信封副本。
-func (message AdmissionReviewedEnvelope) Envelope() EncryptedEnvelopeV1 {
-	return cloneEnvelope(message.envelope)
-}
-
-// AuthenticatedPublicKey 返回外层认证公钥值。
-func (message AdmissionReviewedEnvelope) AuthenticatedPublicKey() encoding.PublicKey {
-	return message.authenticatedPublicKey
-}
-
-// IsReviewed 返回该值是否由 ReviewEnvelopeAdmission 成功创建。
-func (message AdmissionReviewedEnvelope) IsReviewed() bool { return message.reviewed }
 
 // DeduplicationKey 是私密消息的 (protocol, from_public_key, message_id) 去重键。
 type DeduplicationKey struct {
@@ -375,18 +301,6 @@ func (message SignedPrivateMessage) Marshal() ([]byte, error) { return MarshalPr
 
 // MarshalJSON 是信封的便捷方法，仍返回防御性新字节。
 func (envelope EncryptedEnvelopeV1) MarshalJSON() ([]byte, error) { return Marshal(envelope) }
-
-// ReviewEnvelopeAdmission 检查外层认证公钥等于信封 from_public_key。
-func ReviewEnvelopeAdmission(envelope EncryptedEnvelopeV1, authenticatedPublicKey encoding.PublicKey) (AdmissionReviewedEnvelope, error) {
-	if err := validateEnvelope(envelope); err != nil {
-		return AdmissionReviewedEnvelope{}, err
-	}
-	if err := encoding.CheckIdentity(authenticatedPublicKey, envelope.FromPublicKey, "外层认证公钥与信封 from_public_key 不一致"); err != nil {
-		return AdmissionReviewedEnvelope{}, err
-	}
-	envelope.ciphertext = append([]byte(nil), envelope.ciphertext...)
-	return AdmissionReviewedEnvelope{envelope: envelope, authenticatedPublicKey: authenticatedPublicKey, reviewed: true}, nil
-}
 
 // SignPrivateMessage 对强类型私密消息生成唯一确定性签名。
 func SignPrivateMessage(message UnsignedPrivateMessage, privateKey encoding.PrivateKey) (SignedPrivateMessage, error) {
@@ -575,6 +489,13 @@ func Open(channel string, envelopeJSON []byte, recipientPrivateKey encoding.Priv
 	if err != nil {
 		return VerifiedPrivateMessage{}, protocolerror.New(protocolerror.OpenFailed, "私密信封无法打开")
 	}
+	_, err = parsePrivateBody(parsed.Protocol, parsed.Body)
+	if err != nil {
+		if protocolerror.Is(err, protocolerror.UnsupportedProtocol) {
+			return VerifiedPrivateMessage{}, err
+		}
+		return VerifiedPrivateMessage{}, protocolerror.New(protocolerror.OpenFailed, "私密信封无法打开")
+	}
 	digestHash, _ := encoding.NewSHA256HashFromBytes(digest[:])
 	return VerifiedPrivateMessage{
 		channel:       channel,
@@ -591,58 +512,120 @@ func Open(channel string, envelopeJSON []byte, recipientPrivateKey encoding.Priv
 	}, nil
 }
 
-// Dispatch 将 Open 的低层结果分派为 WebRTC 或应用消息强类型 body。
-func Dispatch(message VerifiedPrivateMessage) (DecodedInboxMessage, error) {
-	if !message.verified {
-		return DecodedInboxMessage{}, protocolerror.New(protocolerror.InvalidSignature, "消息不是 SDK 生成的已验证结果")
-	}
-	rawBody, err := strictjson.Parse(message.bodyJSON)
-	if err != nil {
-		return DecodedInboxMessage{}, protocolerror.New(protocolerror.InvalidBody, "已验证消息 body 快照损坏")
-	}
-	var body DecodedBody
-	switch message.protocolName {
+func parsePrivateBody(protocolName string, value strictjson.JSONValue) (PrivateBody, error) {
+	switch protocolName {
 	case protocol.WebRTCSignalProtocol:
-		parsed, err := webrtcsignal.ParseBodyValue(rawBody)
-		if err != nil {
-			return DecodedInboxMessage{}, err
-		}
-		body = parsed
+		return webrtcsignal.ParseBodyValue(value)
 	case protocol.AppMessageProtocol:
-		parsed, err := appmessage.ParseBodyValue(rawBody)
-		if err != nil {
-			return DecodedInboxMessage{}, err
-		}
-		body = parsed
+		return appmessage.ParseBodyValue(value)
+	case protocol.PingProtocol:
+		return ping.ParseBodyValue(value)
 	default:
-		return DecodedInboxMessage{}, protocolerror.New(protocolerror.UnsupportedProtocol, "私密消息 protocol 未注册")
+		return nil, protocolerror.New(protocolerror.UnsupportedProtocol, "私密消息 protocol 未注册")
 	}
-	bodyJSON, err := canonicaljson.CanonicalizeValue(body.JSONValue())
-	if err != nil {
-		return DecodedInboxMessage{}, protocolerror.New(protocolerror.InvalidBody, "分派 body 无法规范化")
-	}
-	return DecodedInboxMessage{
-		channel:       message.channel,
-		fromPublicKey: message.fromPublicKey,
-		toPublicKey:   message.toPublicKey,
-		protocolName:  message.protocolName,
-		messageID:     message.messageID,
-		issuedAtMs:    message.issuedAtMs,
-		expiresAtMs:   message.expiresAtMs,
-		bodyJSON:      append([]byte(nil), bodyJSON...),
-		signature:     message.signature,
-		digest:        message.digest,
-		decoded:       true,
-	}, nil
 }
 
-// OpenAndDispatch 是严格解密并直接返回强类型分派结果的高层入口。
-func OpenAndDispatch(channel string, envelopeJSON []byte, recipientPrivateKey encoding.PrivateKey, nowMs int64) (DecodedInboxMessage, error) {
-	message, err := Open(channel, envelopeJSON, recipientPrivateKey, nowMs)
-	if err != nil {
-		return DecodedInboxMessage{}, err
+// ValidateAckRelation 从两条已解密、已验签的完整私密消息检查 Deliver/ACK 关系。
+// 调用方不能通过手工 Context 覆盖信封发送者、channel 目标或 message_id。
+func ValidateAckRelation(delivery, ack VerifiedPrivateMessage) error {
+	if !delivery.verified || !ack.verified {
+		return protocolerror.New(protocolerror.InvalidSignature, "Deliver 或 ACK 不是 SDK 生成的已验证结果")
 	}
-	return Dispatch(message)
+	if delivery.protocolName != protocol.AppMessageProtocol || ack.protocolName != protocol.AppMessageProtocol {
+		return protocolerror.New(protocolerror.InvalidRelation, "Deliver 和 ACK 必须属于应用消息子协议")
+	}
+	deliveryBody, err := appmessage.ParseBody(delivery.bodyJSON)
+	if err != nil {
+		return protocolerror.New(protocolerror.InvalidRelation, "Deliver body 不是合法应用消息")
+	}
+	ackBody, err := appmessage.ParseBody(ack.bodyJSON)
+	if err != nil {
+		return protocolerror.New(protocolerror.InvalidRelation, "ACK body 不是合法应用消息")
+	}
+	if _, ok := deliveryBody.(appmessage.DeliverBody); !ok {
+		return protocolerror.New(protocolerror.InvalidRelation, "第一条应用消息不是 Deliver")
+	}
+	ackValue, ok := ackBody.(appmessage.AckBody)
+	if !ok {
+		return protocolerror.New(protocolerror.InvalidRelation, "第二条应用消息不是 ACK")
+	}
+	if !ack.fromPublicKey.Equal(delivery.toPublicKey) {
+		return protocolerror.New(protocolerror.InvalidRelation, "ACK 发送者不是 Deliver 接收者")
+	}
+	if !ack.toPublicKey.Equal(delivery.fromPublicKey) {
+		return protocolerror.New(protocolerror.InvalidRelation, "ACK 接收者不是 Deliver 发送者")
+	}
+	if !ackValue.AcknowledgedMessageID.Equal(delivery.messageID) {
+		return protocolerror.New(protocolerror.InvalidRelation, "ACK 未关联原 Deliver message_id")
+	}
+	return nil
+}
+
+// ValidatePongRelation 从两条已解密、已验签的完整私密消息检查 Ping/Pong 关系。
+func ValidatePongRelation(pingMessage, pongMessage VerifiedPrivateMessage) error {
+	if !pingMessage.verified || !pongMessage.verified {
+		return protocolerror.New(protocolerror.InvalidSignature, "Ping 或 Pong 不是 SDK 生成的已验证结果")
+	}
+	if pingMessage.protocolName != protocol.PingProtocol || pongMessage.protocolName != protocol.PingProtocol {
+		return protocolerror.New(protocolerror.InvalidRelation, "Ping 和 Pong 必须属于 Ping/Pong 子协议")
+	}
+	pingBody, err := ping.ParseBody(pingMessage.bodyJSON)
+	if err != nil {
+		return protocolerror.New(protocolerror.InvalidRelation, "Ping body 不是合法 Ping/Pong body")
+	}
+	pongBody, err := ping.ParseBody(pongMessage.bodyJSON)
+	if err != nil {
+		return protocolerror.New(protocolerror.InvalidRelation, "Pong body 不是合法 Ping/Pong body")
+	}
+	if pingBody.Type != ping.TypePing || pongBody.Type != ping.TypePong {
+		return protocolerror.New(protocolerror.InvalidRelation, "Ping/Pong body 类型不匹配")
+	}
+	if !pongMessage.fromPublicKey.Equal(pingMessage.toPublicKey) {
+		return protocolerror.New(protocolerror.InvalidRelation, "Pong 发送者不是 Ping 接收者")
+	}
+	if !pongMessage.toPublicKey.Equal(pingMessage.fromPublicKey) {
+		return protocolerror.New(protocolerror.InvalidRelation, "Pong 接收者不是 Ping 发送者")
+	}
+	if !pongBody.PingMessageID.Equal(pingMessage.messageID) {
+		return protocolerror.New(protocolerror.InvalidRelation, "Pong 未关联原 Ping message_id")
+	}
+	return nil
+}
+
+// ValidateWebRTCRelation 从已解密、已验签的 offer 和后续信令检查 WebRTC 关系。
+func ValidateWebRTCRelation(offer, message VerifiedPrivateMessage) error {
+	if !offer.verified || !message.verified {
+		return protocolerror.New(protocolerror.InvalidSignature, "WebRTC 消息不是 SDK 生成的已验证结果")
+	}
+	if offer.protocolName != protocol.WebRTCSignalProtocol || message.protocolName != protocol.WebRTCSignalProtocol {
+		return protocolerror.New(protocolerror.InvalidRelation, "WebRTC 消息必须属于 WebRTC 子协议")
+	}
+	offerBody, err := webrtcsignal.ParseBody(offer.bodyJSON)
+	if err != nil || offerBody.Signal.Type != webrtcsignal.SignalOffer {
+		return protocolerror.New(protocolerror.InvalidRelation, "第一条 WebRTC 消息必须是 offer")
+	}
+	nextBody, err := webrtcsignal.ParseBody(message.bodyJSON)
+	if err != nil {
+		return protocolerror.New(protocolerror.InvalidRelation, "WebRTC 后续消息 body 不合法")
+	}
+	if !nextBody.RequestMessageID.Equal(offerBody.RequestMessageID) || !nextBody.SessionID.Equal(offerBody.SessionID) {
+		return protocolerror.New(protocolerror.InvalidRelation, "WebRTC request_message_id 或 session_id 不匹配")
+	}
+	if nextBody.Signal.Type == webrtcsignal.SignalAnswer {
+		if !message.fromPublicKey.Equal(offer.toPublicKey) || !message.toPublicKey.Equal(offer.fromPublicKey) {
+			return protocolerror.New(protocolerror.InvalidRelation, "answer 方向与 offer 不匹配")
+		}
+		return nil
+	}
+	if nextBody.Signal.Type != webrtcsignal.SignalICECandidate && nextBody.Signal.Type != webrtcsignal.SignalEndOfCandidates {
+		return protocolerror.New(protocolerror.InvalidRelation, "WebRTC 后续消息必须是 answer、ICE 或 end-of-candidates")
+	}
+	if (!message.fromPublicKey.Equal(offer.fromPublicKey) && !message.fromPublicKey.Equal(offer.toPublicKey)) ||
+		(!message.toPublicKey.Equal(offer.fromPublicKey) && !message.toPublicKey.Equal(offer.toPublicKey)) ||
+		message.fromPublicKey.Equal(message.toPublicKey) {
+		return protocolerror.New(protocolerror.InvalidRelation, "ICE 发送者或接收者不属于 offer 双方")
+	}
+	return nil
 }
 
 // DedupKey 返回私密消息去重键。
@@ -724,11 +707,6 @@ func envelopeValue(envelope EncryptedEnvelopeV1) map[string]any {
 	}
 }
 
-func cloneEnvelope(envelope EncryptedEnvelopeV1) EncryptedEnvelopeV1 {
-	envelope.ciphertext = append([]byte(nil), envelope.ciphertext...)
-	return envelope
-}
-
 func validateEnvelope(envelope EncryptedEnvelopeV1) error {
 	if _, err := parseInboxChannel(envelope.Channel); err != nil {
 		return err
@@ -755,7 +733,7 @@ func validateUnsigned(message UnsignedPrivateMessage) error {
 	if _, err := encoding.ParseMessageID(message.MessageID.String()); err != nil {
 		return err
 	}
-	if message.Protocol != protocol.WebRTCSignalProtocol && message.Protocol != protocol.AppMessageProtocol {
+	if message.Protocol != protocol.WebRTCSignalProtocol && message.Protocol != protocol.AppMessageProtocol && message.Protocol != protocol.PingProtocol {
 		return protocolerror.New(protocolerror.UnsupportedProtocol, "私密消息 protocol 未注册")
 	}
 	if message.Body == nil {
@@ -800,6 +778,20 @@ func validateUnsigned(message UnsignedPrivateMessage) error {
 	case *appmessage.AckBody:
 		if body == nil || message.Protocol != protocol.AppMessageProtocol {
 			return protocolerror.New(protocolerror.InvalidBody, "protocol 与应用 body 类型不一致")
+		}
+		if err := body.Validate(); err != nil {
+			return err
+		}
+	case ping.Body:
+		if message.Protocol != protocol.PingProtocol {
+			return protocolerror.New(protocolerror.InvalidBody, "protocol 与 Ping/Pong body 类型不一致")
+		}
+		if err := body.Validate(); err != nil {
+			return err
+		}
+	case *ping.Body:
+		if body == nil || message.Protocol != protocol.PingProtocol {
+			return protocolerror.New(protocolerror.InvalidBody, "protocol 与 Ping/Pong body 类型不一致")
 		}
 		if err := body.Validate(); err != nil {
 			return err
@@ -949,6 +941,8 @@ func validatePrivateTimes(issued, expires, now int64, protocolName string, check
 	maxLifetime := int64(24 * 60 * 60 * 1000)
 	if protocolName == protocol.WebRTCSignalProtocol {
 		maxLifetime = 2 * 60 * 1000
+	} else if protocolName == protocol.PingProtocol {
+		maxLifetime = 60 * 1000
 	}
 	if expires-issued > maxLifetime {
 		return protocolerror.New(protocolerror.InvalidTime, "私密消息有效期超过子协议上限")

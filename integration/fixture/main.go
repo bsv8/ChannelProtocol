@@ -73,10 +73,9 @@ type jcsResult struct {
 }
 
 type hashResult struct {
-	JSON              string `json:"json"`
-	DigestHex         string `json:"digest_hex"`
-	Signature         string `json:"signature"`
-	AdmissionReviewed bool   `json:"admission_reviewed"`
+	JSON      string `json:"json"`
+	DigestHex string `json:"digest_hex"`
+	Signature string `json:"signature"`
 }
 
 type privateResult struct {
@@ -85,7 +84,7 @@ type privateResult struct {
 	DigestHex      string `json:"digest_hex"`
 	Signature      string `json:"signature"`
 	OpenedProtocol string `json:"opened_protocol"`
-	DispatchedBody string `json:"dispatched_body"`
+	OpenedBody     string `json:"opened_body"`
 }
 
 type errorResult struct {
@@ -125,7 +124,7 @@ func main() {
 // verifyForeignResult 读取 TypeScript 构造的 JSON，验证 Go 能独立解析、验签和解密。
 func verifyForeignResult(input fixture, data []byte) error {
 	var foreign result
-	if err := json.Unmarshal(data, &foreign); err != nil {
+			if err := json.Unmarshal(data, &foreign); err != nil {
 		return fmt.Errorf("TypeScript fixture 输出不是 result JSON: %w", err)
 	}
 	privateB, err := parsePrivateKey(input.TestOnlyPrivateKeyB)
@@ -148,8 +147,8 @@ func verifyForeignResult(input fixture, data []byte) error {
 	if opened.Signature().String() != input.PrivateMessage.Signature || opened.Digest().String() != input.PrivateMessage.DigestHex {
 		return errors.New("TypeScript 私密消息摘要或签名不匹配")
 	}
-	if _, err := inbox.Dispatch(opened); err != nil {
-		return fmt.Errorf("Go 无法分派 TypeScript 私密消息: %w", err)
+	if _, ok := opened.WebRTCSignal(); !ok {
+		return errors.New("TypeScript 私密消息未返回 WebRTC body")
 	}
 	expectedDedupRelations, err := buildDedupRelations(input)
 	if err != nil {
@@ -240,10 +239,7 @@ func build(input fixture) (result, error) {
 	if err != nil {
 		return result{}, err
 	}
-	if _, err := verifiedPublic.ReviewAdmission(publicA); err != nil {
-		return result{}, err
-	}
-	output.HashRequest = hashResult{JSON: string(publicJSON), DigestHex: verifiedPublic.Digest().String(), Signature: verifiedPublic.Signature().String(), AdmissionReviewed: true}
+	output.HashRequest = hashResult{JSON: string(publicJSON), DigestHex: verifiedPublic.Digest().String(), Signature: verifiedPublic.Signature().String()}
 
 	body, err := webrtcsignal.NewOffer(messageID, sessionID, "v=0")
 	if err != nil {
@@ -293,15 +289,11 @@ func build(input fixture) (result, error) {
 	if err != nil {
 		return result{}, err
 	}
-	dispatched, err := inbox.Dispatch(opened)
-	if err != nil {
-		return result{}, err
-	}
 	bodyType := "unknown"
-	if _, ok := dispatched.WebRTCSignal(); ok {
+	if _, ok := opened.WebRTCSignal(); ok {
 		bodyType = "webrtc.signal.offer"
 	}
-	output.PrivateMessage = privateResult{PlaintextJSON: string(plaintext), EnvelopeJSON: string(envelopeJSON), DigestHex: opened.Digest().String(), Signature: opened.Signature().String(), OpenedProtocol: opened.Protocol(), DispatchedBody: bodyType}
+	output.PrivateMessage = privateResult{PlaintextJSON: string(plaintext), EnvelopeJSON: string(envelopeJSON), DigestHex: opened.Digest().String(), Signature: opened.Signature().String(), OpenedProtocol: opened.Protocol(), OpenedBody: bodyType}
 
 	output.DedupRelations, err = buildDedupRelations(input)
 	if err != nil {

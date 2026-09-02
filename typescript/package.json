@@ -1,6 +1,6 @@
 {
   "name": "bsv8-channel-protocol",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "BSV8 三方频道协议 Go/TypeScript 对齐 SDK 的 TypeScript 实现",
   "license": "AGPL-3.0-only",
   "type": "module",
@@ -39,6 +39,10 @@
     "./app-message": {
       "types": "./dist/app-message/index.d.ts",
       "import": "./dist/app-message/index.js"
+    },
+    "./ping": {
+      "types": "./dist/ping/index.d.ts",
+      "import": "./dist/ping/index.js"
     }
   },
   "scripts": {

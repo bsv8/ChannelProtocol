@@ -6,7 +6,6 @@ import (
 
 	"github.com/bsv8/ChannelProtocol/internal/canonicaljson"
 	"github.com/bsv8/ChannelProtocol/internal/encoding"
-	"github.com/bsv8/ChannelProtocol/internal/protocol"
 	"github.com/bsv8/ChannelProtocol/internal/protocolerror"
 	"github.com/bsv8/ChannelProtocol/internal/strictjson"
 )
@@ -25,14 +24,10 @@ const (
 
 // MessageV1Body 是 bsv8.message.v1 的强类型 body 联合接口。
 type MessageV1Body interface {
-	// ProtocolName 返回固定子协议名称。
-	ProtocolName() string
 	// JSONValue 返回不含公共头的 JSON 值。
 	JSONValue() any
 	// Validate 检查当前联合分支。
 	Validate() error
-	// MessageType 返回 deliver 或 ack。
-	MessageType() MessageType
 }
 
 // DeliverBody 是应用消息投递正文。
@@ -46,9 +41,6 @@ type AckBody struct {
 	// AcknowledgedMessageID 是原 Deliver 私密消息的 message_id。
 	AcknowledgedMessageID encoding.MessageID
 }
-
-// ProtocolName 返回 Deliver 所属子协议。
-func (DeliverBody) ProtocolName() string { return protocol.AppMessageProtocol }
 
 // JSONValue 返回 Deliver body。
 func (body DeliverBody) JSONValue() any {
@@ -70,12 +62,6 @@ func (body DeliverBody) Validate() error {
 	return nil
 }
 
-// MessageType 返回 deliver。
-func (DeliverBody) MessageType() MessageType { return MessageTypeDeliver }
-
-// ProtocolName 返回 ACK 所属子协议。
-func (AckBody) ProtocolName() string { return protocol.AppMessageProtocol }
-
 // JSONValue 返回 ACK body。
 func (body AckBody) JSONValue() any {
 	return map[string]any{"type": string(MessageTypeAck), "acknowledged_message_id": body.AcknowledgedMessageID.String()}
@@ -88,9 +74,6 @@ func (body AckBody) Validate() error {
 	}
 	return nil
 }
-
-// MessageType 返回 ack。
-func (AckBody) MessageType() MessageType { return MessageTypeAck }
 
 // NewDeliver 构造并校验 Deliver body。
 func NewDeliver(content any) (DeliverBody, error) {
@@ -151,81 +134,6 @@ func ParseBodyValue(value strictjson.JSONValue) (MessageV1Body, error) {
 	default:
 		return nil, protocolerror.New(protocolerror.InvalidBody, "不支持的应用消息 body.type")
 	}
-}
-
-// DeliveryContext 描述原 Deliver 的发送者、接收者和外层消息编号。
-type DeliveryContext struct {
-	// FromPublicKey 是 Deliver 信封发送者。
-	FromPublicKey encoding.PublicKey
-	// ToPublicKey 是 Deliver inbox channel 目标。
-	ToPublicKey encoding.PublicKey
-	// MessageID 是原 Deliver 私密消息编号。
-	MessageID encoding.MessageID
-}
-
-// AckContext 描述 ACK 信封身份和 ACK body。
-type AckContext struct {
-	// FromPublicKey 是 ACK 信封发送者。
-	FromPublicKey encoding.PublicKey
-	// ToPublicKey 是 ACK inbox channel 目标。
-	ToPublicKey encoding.PublicKey
-	// Body 是 ACK 强类型正文。
-	Body AckBody
-}
-
-// ValidateAckRelation 检查 ACK 的发送者、接收者和 acknowledged_message_id。
-func ValidateAckRelation(delivery DeliveryContext, ack AckContext) error {
-	if _, err := encoding.ParsePublicKey(delivery.FromPublicKey.String()); err != nil {
-		return err
-	}
-	if _, err := encoding.ParsePublicKey(delivery.ToPublicKey.String()); err != nil {
-		return err
-	}
-	if _, err := encoding.ParsePublicKey(ack.FromPublicKey.String()); err != nil {
-		return err
-	}
-	if _, err := encoding.ParsePublicKey(ack.ToPublicKey.String()); err != nil {
-		return err
-	}
-	if _, err := encoding.ParseMessageID(delivery.MessageID.String()); err != nil {
-		return err
-	}
-	if err := ack.Body.Validate(); err != nil {
-		return err
-	}
-	if !ack.FromPublicKey.Equal(delivery.ToPublicKey) {
-		return protocolerror.New(protocolerror.InvalidRelation, "ACK 发送者不是 Deliver 接收者")
-	}
-	if !ack.ToPublicKey.Equal(delivery.FromPublicKey) {
-		return protocolerror.New(protocolerror.InvalidRelation, "ACK 接收者不是 Deliver 发送者")
-	}
-	if !ack.Body.AcknowledgedMessageID.Equal(delivery.MessageID) {
-		return protocolerror.New(protocolerror.InvalidRelation, "ACK 未关联原 Deliver message_id")
-	}
-	return nil
-}
-
-// DeduplicationKey 是应用消息的 (protocol, from_public_key, message_id) 去重键。
-type DeduplicationKey struct {
-	// Protocol 固定为 bsv8.message.v1。
-	Protocol string
-	// FromPublicKey 是私密消息发送者。
-	FromPublicKey encoding.PublicKey
-	// MessageID 是私密消息编号。
-	MessageID encoding.MessageID
-}
-
-// NewDeduplicationKey 构造应用消息去重键。
-func NewDeduplicationKey(from encoding.PublicKey, messageID encoding.MessageID) DeduplicationKey {
-	return DeduplicationKey{Protocol: protocol.AppMessageProtocol, FromPublicKey: from, MessageID: messageID}
-}
-
-// CheckDigestConflict 检查相同去重键的两个签名摘要是否冲突。
-func CheckDigestConflict(existing, incoming encoding.SHA256Hash) error {
-	if !existing.Equal(incoming) {
-		return protocolerror.New(protocolerror.MessageIDConflict, "同一应用消息去重键对应不同已签名内容")
-	}
-	return nil
 }
 
 // MaxLifetimeMs 返回 Deliver/ACK 的最大有效期。
