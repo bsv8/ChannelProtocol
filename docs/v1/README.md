@@ -1,6 +1,6 @@
 # Channel Protocol V1
 
-项目包/API 版本为 `0.2.0`；线上 channel、protocol 和 envelope 版本仍为 V1。
+待发布项目包/API 版本为 `0.3.0`；线上 channel、protocol 和 envelope 版本仍为 V1。
 
 ## 1. 分层
 
@@ -8,7 +8,8 @@
 libp2p authenticated public key
   └─ SSP caller / payer / request_id / billing
        └─ exact CP content_json
-            ├─ PublicMessage<HashRequestBody>
+            ├─ PublicMessage<arbitrary JSON body>
+            ├─ HashRequest<HashRequestBody>
             └─ EncryptedEnvelopeV1
                  └─ PrivateMessage<Protocol, Body>
                       ├─ WebRTCSignalV1Body
@@ -32,8 +33,9 @@ SSP 不携带身份公钥或业务签名。CP 是独立可验证内容，拥有�
 }
 ```
 
-公开 channel 决定 body 协议，因此不重复 `protocol`。当前
-`bsv8.hash.request.v1` 使用该外壳。
+公开 channel 决定固定频道的 body 协议，因此不重复 `protocol`。当前
+`bsv8.hash.request.v1` 使用该外壳；任意精确公开频道也可以使用通用公开消息原语，详见
+[通用公开消息](./06-通用公开消息.md)。
 
 ## 3. 私密消息壳
 
@@ -129,4 +131,5 @@ Inbox 使用长期 secp256k1 ECDH、HKDF-SHA256 和 AES-256-GCM，不承诺前�
 - [WebRTC SDP](./03-WebRTC-SDP子协议.md)
 - [应用消息与 ACK](./04-应用消息子协议.md)
 - [Ping/Pong](./05-Ping-Pong子协议.md)
+- [通用公开消息](./06-通用公开消息.md)
 - [跨仓库消融设计](../SSP-CP协议族消融设计.md)

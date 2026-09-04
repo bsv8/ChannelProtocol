@@ -9,11 +9,15 @@ import (
 	"github.com/bsv8/ChannelProtocol/appmessage"
 	"github.com/bsv8/ChannelProtocol/hashrequest"
 	"github.com/bsv8/ChannelProtocol/inbox"
+	"github.com/bsv8/ChannelProtocol/publicmessage"
 	"github.com/bsv8/ChannelProtocol/webrtcsignal"
 )
 
 func main() {
 	if err := hashRequestExample(); err != nil {
+		panic(err)
+	}
+	if err := publicMessageExample(); err != nil {
 		panic(err)
 	}
 	if err := webRTCExample(); err != nil {
@@ -22,6 +26,46 @@ func main() {
 	if err := deliverAckRetryExample(); err != nil {
 		panic(err)
 	}
+}
+
+// publicMessageExample 构造、签名、规范序列化并验签任意精确频道上的公开消息。
+func publicMessageExample() error {
+	privateKey, err := channels.GeneratePrivateKey()
+	if err != nil {
+		return err
+	}
+	publicKey, err := channels.PublicKeyFromPrivate(privateKey)
+	if err != nil {
+		return err
+	}
+	messageID, err := channels.NewMessageID(nil)
+	if err != nil {
+		return err
+	}
+	channel := "bsv8.public.example.v1"
+	now := time.Now().UnixMilli()
+	signed, err := publicmessage.Sign(publicmessage.UnsignedMessage{
+		Channel:       channel,
+		FromPublicKey: publicKey,
+		MessageID:     messageID,
+		IssuedAtMs:    now,
+		ExpiresAtMs:   now + publicmessage.MaxLifetimeMs(),
+		Body:          map[string]any{"kind": "local-demo", "value": 1},
+	}, privateKey)
+	if err != nil {
+		return err
+	}
+	encoded, err := publicmessage.Marshal(signed)
+	if err != nil {
+		return err
+	}
+	verified, err := publicmessage.ParseAndVerify(channel, encoded, now)
+	if err != nil {
+		return err
+	}
+	key := verified.DedupKey()
+	fmt.Printf("通用公开消息：%s/%s/%s 签名和验签通过\n", key.Channel, key.FromPublicKey.String(), key.MessageID.String())
+	return nil
 }
 
 // hashRequestExample 构造、签名并验签公开 Hash 请求。

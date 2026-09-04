@@ -1,0 +1,56 @@
+{
+  "description_zh": "通用公开消息 body、JCS、签名和时间边界的共享向量；私钥仅用于测试",
+  "test_only_private_key_hex": "0000000000000000000000000000000000000000000000000000000000000001",
+  "public_key": "0279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+  "message_id": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+  "cases": [
+    {
+      "name": "nested body",
+      "channel": "bsv8.public.demo.v1",
+      "issued_at_ms": 1000,
+      "expires_at_ms": 2000,
+      "now_ms": 1500,
+      "body": {
+        "object": {"z": null, "unicode": "公开😀消息", "number": 4.5},
+        "array": [true, false, null, {"nested": ["é", 0, 1e-7]}],
+        "boolean": true,
+        "null_value": null,
+        "number": 1e20
+      },
+      "expected": {
+        "json": "{\"body\":{\"array\":[true,false,null,{\"nested\":[\"é\",0,1e-7]}],\"boolean\":true,\"null_value\":null,\"number\":100000000000000000000,\"object\":{\"number\":4.5,\"unicode\":\"公开😀消息\",\"z\":null}},\"expires_at_ms\":2000,\"from_public_key\":\"0279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798\",\"issued_at_ms\":1000,\"message_id\":\"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\",\"signature\":\"MEUCIQCxjq-UdL-zqecurQmubV2d3utTgDMA2IDsiMy6u5hlNwIgBibjNfJll26ZdHMI00WVltCSQ0GhaU4uOLsCMqSfKyM\"}",
+        "digest_hex": "f9f1e9ff7755d98ac30df3f6f12667a02c6009c1e8ee4b621f61117ab53ee220",
+        "signature": "MEUCIQCxjq-UdL-zqecurQmubV2d3utTgDMA2IDsiMy6u5hlNwIgBibjNfJll26ZdHMI00WVltCSQ0GhaU4uOLsCMqSfKyM",
+        "dedup_key": ["bsv8.public.demo.v1", "0279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798", "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"]
+      }
+    },
+    {
+      "name": "maximum lifetime",
+      "channel": "bsv8.public.demo.v1",
+      "issued_at_ms": 1000,
+      "expires_at_ms": 601000,
+      "now_ms": 1000,
+      "body": {"boundary": "max lifetime"},
+      "expected": {
+        "json": "{\"body\":{\"boundary\":\"max lifetime\"},\"expires_at_ms\":601000,\"from_public_key\":\"0279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798\",\"issued_at_ms\":1000,\"message_id\":\"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\",\"signature\":\"MEUCIQCRi3vvezMC4NLFayQPbKB87mot86HY27sQSTqQUPR3HAIgB-IA7X320XgErrTE6-klHDzXaJluC2697zn4OU-3z18\"}",
+        "digest_hex": "266a2d0b5ed4b86b47beaaba37cb033a8026fcd4c434ba75b86dd581d01fd688",
+        "signature": "MEUCIQCRi3vvezMC4NLFayQPbKB87mot86HY27sQSTqQUPR3HAIgB-IA7X320XgErrTE6-klHDzXaJluC2697zn4OU-3z18",
+        "dedup_key": ["bsv8.public.demo.v1", "0279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798", "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"]
+      }
+    },
+    {
+      "name": "maximum future clock skew",
+      "channel": "bsv8.public.future.v1",
+      "issued_at_ms": 61000,
+      "expires_at_ms": 661000,
+      "now_ms": 1000,
+      "body": {"boundary": "future skew"},
+      "expected": {
+        "json": "{\"body\":{\"boundary\":\"future skew\"},\"expires_at_ms\":661000,\"from_public_key\":\"0279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798\",\"issued_at_ms\":61000,\"message_id\":\"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\",\"signature\":\"MEUCIQCTH3fxeluYpg8xhR3wVARbgMteW9Q1XYEVOKGrfmry9QIgXzaVT_5TfB7t08nmQWugeper3sW1wZ36_iV6OaOtYjM\"}",
+        "digest_hex": "c17836537cf97fdbe3db35f930869c5b90f4a3cb597dd34fa1a42fed0c29ce36",
+        "signature": "MEUCIQCTH3fxeluYpg8xhR3wVARbgMteW9Q1XYEVOKGrfmry9QIgXzaVT_5TfB7t08nmQWugeper3sW1wZ36_iV6OaOtYjM",
+        "dedup_key": ["bsv8.public.future.v1", "0279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798", "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"]
+      }
+    }
+  ]
+}

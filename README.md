@@ -1,6 +1,6 @@
 # BSV8 Channel Protocol SDK
 
-项目包/API 版本：`0.2.0`。协议标识仍保持 `bsv8.*.v1`。
+待发布项目包/API 版本：`0.3.0`。协议标识仍保持 `bsv8.*.v1`。
 
 ChannelProtocol（CP）是独立于 libp2p/SSP 的内容协议：
 
@@ -22,7 +22,8 @@ ChannelProtocol（CP）是独立于 libp2p/SSP 的内容协议：
 
 | 线上标识 | Go package | TypeScript export | 职责 |
 |---|---|---|---|
-| `bsv8.hash.request.v1` | `hashrequest` | `./hash-request` | 自包含签名 Hash 请求 |
+| `bsv8.public-message.v1` | `publicmessage` | `./public-message` | 任意精确公开频道的通用签名 JSON 原语 |
+| `bsv8.hash.request.v1` | `hashrequest` | `./hash-request` | 固定频道的强类型签名 Hash 请求 |
 | `bsv8.inbox.<public_key_hex>` | `inbox` | `./inbox` | 自包含发送者公钥的端到端加密信封 |
 | `bsv8.webrtc.signal.v1` | `webrtcsignal` | `./webrtc-signal` | SDP/ICE body |
 | `bsv8.message.v1` | `appmessage` | `./app-message` | Deliver/ACK body |
@@ -38,8 +39,8 @@ npm package: bsv8-channel-protocol
 ```
 
 ```text
-go get github.com/bsv8/ChannelProtocol@v0.2.0
-npm install bsv8-channel-protocol@0.2.0
+go get github.com/bsv8/ChannelProtocol@v0.3.0
+npm install bsv8-channel-protocol@0.3.0
 ```
 
 CP Go module 和 TypeScript package 均不得依赖 SSP package。
@@ -60,7 +61,20 @@ CP Go module 和 TypeScript package 均不得依赖 SSP package。
 
 ## 目标消息外壳
 
-公开 Hash 消息：
+通用公开消息（channel 不进入 JSON，但进入签名逻辑对象）：
+
+```json
+{
+  "from_public_key": "02...",
+  "message_id": "...",
+  "issued_at_ms": 0,
+  "expires_at_ms": 0,
+  "body": {"kind":"local-demo","value":1},
+  "signature": "..."
+}
+```
+
+固定频道的公开 Hash 消息：
 
 ```json
 {
@@ -98,7 +112,10 @@ Inbox 信封：
 }
 ```
 
-Inbox 的发送者公钥只在信封出现一次；明文签名使用该公钥验证。
+Inbox 的发送者公钥只在信封出现一次；明文签名使用该公钥验证。发送方保留的本地已签名
+Ping/WebRTC 明文可调用 `VerifySignedPrivateMessage`（TypeScript 为
+`verifySignedPrivateMessage`）进入相同的 verified 关系校验边界；远端密文仍必须调用
+`Open`/`open`。
 
 ## SDK 消融边界
 
@@ -117,3 +134,5 @@ go vet ./...
 cd typescript && npm ci && npm test && npm pack --dry-run
 cd .. && ./scripts/test-integration.sh
 ```
+
+本施工单只准备 `0.3.0`，不执行 npm publish、Git tag 或 push。

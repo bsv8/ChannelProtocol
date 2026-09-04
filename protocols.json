@@ -3,6 +3,14 @@
   "description_zh": "三方频道协议文档与 Go、TypeScript 模块的一一对应注册表",
   "protocols": [
     {
+      "document": "docs/v1/06-通用公开消息.md",
+      "kind": "public_message_primitive",
+      "identifier": "bsv8.public-message.v1",
+      "description_zh": "任意精确公开频道上的通用签名 JSON 原语；不是新的固定 channel",
+      "go_package": "publicmessage",
+      "typescript_export": "./public-message"
+    },
+    {
       "document": "docs/v1/01-Hash请求频道.md",
       "kind": "public_channel",
       "identifier": "bsv8.hash.request.v1",

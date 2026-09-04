@@ -30,6 +30,21 @@ const (
 	privateFutureSkewMs int64 = 60 * 1000
 )
 
+// PrivateMessageMaxLifetimeMs 返回指定私密子协议允许的最大有效期。
+//
+// 内置子协议的 TTL 真值分别由对应 package 提供；未知名称使用通用私密消息
+// 默认上限，具体协议是否支持仍由消息校验负责。
+func PrivateMessageMaxLifetimeMs(protocolName string) int64 {
+	switch protocolName {
+	case protocol.WebRTCSignalProtocol:
+		return webrtcsignal.MaxLifetimeMs()
+	case protocol.PingProtocol:
+		return ping.MaxLifetimeMs()
+	default:
+		return appmessage.MaxLifetimeMs()
+	}
+}
+
 // PrivateBody 是可进入私密消息的强类型子协议 body。
 // 仅内置 WebRTCSignalV1Body、DeliverBody、AckBody 和 Ping Body 实现此接口。
 type PrivateBody interface {
@@ -411,6 +426,56 @@ func SignAndSeal(message UnsignedPrivateMessage, privateKey encoding.PrivateKey,
 		return EncryptedEnvelopeV1{}, err
 	}
 	return SealSigned(signed, privateKey, randomSource...)
+}
+
+// VerifySignedPrivateMessage 验证本地已经签名的私密明文，并将其提升为可
+// 参与关系校验的 VerifiedPrivateMessage。
+//
+// 该函数不执行解密，也不替代 Open；远端收到的加密信封仍必须通过 Open。
+// 它适用于发送方保留自己刚生成的 Ping、WebRTC offer 或其他私密消息时，
+// 让本地值与 Open 返回值共享同一关系校验边界。
+func VerifySignedPrivateMessage(message SignedPrivateMessage, nowMs int64) (VerifiedPrivateMessage, error) {
+	if err := validateNow(nowMs); err != nil {
+		return VerifiedPrivateMessage{}, err
+	}
+	if err := validateUnsigned(message.UnsignedPrivateMessage); err != nil {
+		return VerifiedPrivateMessage{}, err
+	}
+	if err := validateSignedMessage(message); err != nil {
+		return VerifiedPrivateMessage{}, err
+	}
+	if err := validatePrivateTimes(message.IssuedAtMs, message.ExpiresAtMs, nowMs, message.Protocol, true); err != nil {
+		return VerifiedPrivateMessage{}, err
+	}
+	recipient, err := parseInboxChannel(message.Channel)
+	if err != nil {
+		return VerifiedPrivateMessage{}, err
+	}
+	digest, err := signingDigest(message.UnsignedPrivateMessage)
+	if err != nil {
+		return VerifiedPrivateMessage{}, err
+	}
+	bodyJSON, err := canonicaljson.CanonicalizeValue(message.Body.JSONValue())
+	if err != nil {
+		return VerifiedPrivateMessage{}, err
+	}
+	digestHash, err := encoding.NewSHA256HashFromBytes(digest[:])
+	if err != nil {
+		return VerifiedPrivateMessage{}, err
+	}
+	return VerifiedPrivateMessage{
+		channel:       message.Channel,
+		fromPublicKey: message.FromPublicKey,
+		toPublicKey:   recipient,
+		protocolName:  message.Protocol,
+		messageID:     message.MessageID,
+		issuedAtMs:    message.IssuedAtMs,
+		expiresAtMs:   message.ExpiresAtMs,
+		bodyJSON:      append([]byte(nil), bodyJSON...),
+		signature:     message.Signature,
+		digest:        digestHash,
+		verified:      true,
+	}, nil
 }
 
 // Open 解密、严格解析、检查时间并验证私密消息唯一签名。
@@ -819,14 +884,18 @@ func validateSigned(message SignedPrivateMessage, privateKey encoding.PrivateKey
 	if err := encoding.CheckIdentity(derived, message.FromPublicKey, "Seal 使用的私钥与已签名发送者不一致"); err != nil {
 		return err
 	}
+	return validateSignedMessage(message)
+}
+
+func validateSignedMessage(message SignedPrivateMessage) error {
+	if len(message.Signature.DER()) == 0 {
+		return protocolerror.New(protocolerror.InvalidSignature, "私密消息缺少 signature")
+	}
 	digest, err := signingDigest(message.UnsignedPrivateMessage)
 	if err != nil {
 		return err
 	}
-	if err := secp256k1.Verify(message.FromPublicKey, digest, message.Signature); err != nil {
-		return err
-	}
-	return nil
+	return secp256k1.Verify(message.FromPublicKey, digest, message.Signature)
 }
 
 func signedMessageValue(message SignedPrivateMessage) map[string]any {
@@ -938,12 +1007,7 @@ func validatePrivateTimes(issued, expires, now int64, protocolName string, check
 	if issued >= expires {
 		return protocolerror.New(protocolerror.InvalidTime, "私密消息时间顺序不合法")
 	}
-	maxLifetime := int64(24 * 60 * 60 * 1000)
-	if protocolName == protocol.WebRTCSignalProtocol {
-		maxLifetime = 2 * 60 * 1000
-	} else if protocolName == protocol.PingProtocol {
-		maxLifetime = 60 * 1000
-	}
+	maxLifetime := PrivateMessageMaxLifetimeMs(protocolName)
 	if expires-issued > maxLifetime {
 		return protocolerror.New(protocolerror.InvalidTime, "私密消息有效期超过子协议上限")
 	}

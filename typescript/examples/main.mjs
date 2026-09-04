@@ -3,6 +3,7 @@ import * as channels from "../dist/index.js";
 import * as appmessage from "../dist/app-message/index.js";
 import * as hashrequest from "../dist/hash-request/index.js";
 import * as inbox from "../dist/inbox/index.js";
+import * as publicmessage from "../dist/public-message/index.js";
 import * as webrtc from "../dist/webrtc-signal/index.js";
 
 const zeroHash = channels.sha256HashFromBytes(new Uint8Array(32));
@@ -23,7 +24,26 @@ function hashRequestExample() {
   console.log("Hash 请求：签名和验签通过");
 }
 
-// 示例二：签名、长期密钥加密、解密并强类型分派 WebRTC offer。
+// 示例二：任意精确频道上的通用公开消息签名、规范序列化和验签。
+function publicMessageExample() {
+  const privateKey = channels.generatePrivateKey();
+  const publicKey = channels.publicKeyFromPrivate(privateKey);
+  const channel = "bsv8.public.example.v1";
+  const now = Date.now();
+  const signed = publicmessage.sign({
+    channel,
+    from_public_key: publicKey,
+    message_id: channels.newMessageID(),
+    issued_at_ms: now,
+    expires_at_ms: now + publicmessage.PUBLIC_MESSAGE_MAX_LIFETIME_MS,
+    body: { kind: "local-demo", value: 1 },
+  }, privateKey);
+  const verified = publicmessage.parseAndVerify(channel, publicmessage.marshal(signed), now);
+  const key = publicmessage.dedupKey(verified);
+  console.log(`通用公开消息：${key.channel}/${key.from_public_key}/${key.message_id} 签名和验签通过`);
+}
+
+// 示例三：签名、长期密钥加密、解密并强类型分派 WebRTC offer。
 async function webRTCExample() {
   const senderPrivate = channels.generatePrivateKey();
   const recipientPrivate = channels.generatePrivateKey();
@@ -45,7 +65,7 @@ async function webRTCExample() {
   console.log("WebRTC：长期密钥加解密和强类型分派通过");
 }
 
-// 示例三：Deliver、可靠保存后的 ACK 关系校验和同一签名消息重新加密。
+// 示例四：Deliver、可靠保存后的 ACK 关系校验和同一签名消息重新加密。
 async function deliverAckRetryExample() {
   const senderPrivate = channels.generatePrivateKey();
   const recipientPrivate = channels.generatePrivateKey();
@@ -81,5 +101,6 @@ async function deliverAckRetryExample() {
 }
 
 hashRequestExample();
+publicMessageExample();
 await webRTCExample();
 await deliverAckRetryExample();

@@ -1,0 +1,30 @@
+{
+  "description_zh": "通用公开消息结构、边界、篡改和信任冲突的共享非法向量",
+  "cases": [
+    {"name": "empty channel", "operation": "parse", "channel": "", "now_ms": 1500, "mutation": "none", "expected_code": "INVALID_CHANNEL"},
+    {"name": "wildcard channel", "operation": "parse", "channel": "*", "now_ms": 1500, "mutation": "none", "expected_code": "INVALID_CHANNEL"},
+    {"name": "control character channel", "operation": "parse", "channel": "bsv8.public.\u0001", "now_ms": 1500, "mutation": "none", "expected_code": "INVALID_CHANNEL"},
+    {"name": "channel over 256 UTF-8 bytes", "operation": "parse", "channel": "bsv8.public." , "channel_repeat": 250, "now_ms": 1500, "mutation": "none", "expected_code": "INVALID_CHANNEL"},
+    {"name": "missing body", "operation": "parse", "channel": "bsv8.public.demo.v1", "now_ms": 1500, "mutation": "missing_body", "expected_code": "INVALID_JSON"},
+    {"name": "missing signature", "operation": "parse", "channel": "bsv8.public.demo.v1", "now_ms": 1500, "mutation": "missing_signature", "expected_code": "INVALID_JSON"},
+    {"name": "unknown field", "operation": "parse", "channel": "bsv8.public.demo.v1", "now_ms": 1500, "mutation": "unknown_field", "expected_code": "UNKNOWN_FIELD"},
+    {"name": "content old candidate shape", "operation": "parse", "channel": "bsv8.public.demo.v1", "now_ms": 1500, "mutation": "content_old_shape", "expected_code": "UNKNOWN_FIELD"},
+    {"name": "wrong public key field type", "operation": "parse", "channel": "bsv8.public.demo.v1", "now_ms": 1500, "mutation": "wrong_public_key_type", "expected_code": "INVALID_BODY"},
+    {"name": "duplicate JSON key", "operation": "parse_raw", "channel": "bsv8.public.demo.v1", "now_ms": 1500, "json": "{\"body\":{},\"body\":{}}", "expected_code": "INVALID_JSON"},
+    {"name": "issued at equals expires at", "operation": "parse", "channel": "bsv8.public.demo.v1", "now_ms": 1500, "mutation": "issued_equals_expires", "expected_code": "INVALID_TIME"},
+    {"name": "lifetime over maximum", "operation": "parse", "channel": "bsv8.public.demo.v1", "now_ms": 1500, "mutation": "lifetime_over_max", "expected_code": "INVALID_TIME"},
+    {"name": "future skew over maximum", "operation": "parse", "channel": "bsv8.public.demo.v1", "now_ms": 1000, "mutation": "future_skew_over_max", "expected_code": "INVALID_TIME"},
+    {"name": "now equals expires", "operation": "parse", "channel": "bsv8.public.demo.v1", "now_ms": 2000, "mutation": "none", "expected_code": "MESSAGE_EXPIRED"},
+    {"name": "wrong public key", "operation": "parse", "channel": "bsv8.public.demo.v1", "now_ms": 1500, "mutation": "wrong_public_key", "expected_code": "INVALID_SIGNATURE"},
+    {"name": "wrong signature", "operation": "parse", "channel": "bsv8.public.demo.v1", "now_ms": 1500, "mutation": "wrong_signature", "expected_code": "INVALID_SIGNATURE"},
+    {"name": "high-S signature", "operation": "parse", "channel": "bsv8.public.demo.v1", "now_ms": 1500, "mutation": "high_s_signature", "expected_code": "INVALID_SIGNATURE"},
+    {"name": "tampered channel", "operation": "parse", "channel": "bsv8.public.other.v1", "now_ms": 1500, "mutation": "none", "expected_code": "INVALID_SIGNATURE"},
+    {"name": "tampered body", "operation": "parse", "channel": "bsv8.public.demo.v1", "now_ms": 1500, "mutation": "tampered_body", "expected_code": "INVALID_SIGNATURE"},
+    {"name": "tampered message id", "operation": "parse", "channel": "bsv8.public.demo.v1", "now_ms": 1500, "mutation": "tampered_message_id", "expected_code": "INVALID_SIGNATURE"},
+    {"name": "tampered time", "operation": "parse", "channel": "bsv8.public.demo.v1", "now_ms": 1500, "mutation": "tampered_time", "expected_code": "INVALID_SIGNATURE"},
+    {"name": "JSON byte limit", "operation": "generated", "channel": "bsv8.public.demo.v1", "now_ms": 1500, "generator": "oversized", "expected_code": "MESSAGE_TOO_LARGE"},
+    {"name": "JSON depth limit", "operation": "generated", "channel": "bsv8.public.demo.v1", "now_ms": 1500, "generator": "too_deep", "expected_code": "MESSAGE_TOO_LARGE"},
+    {"name": "JSON node limit", "operation": "generated", "channel": "bsv8.public.demo.v1", "now_ms": 1500, "generator": "too_many_nodes", "expected_code": "MESSAGE_TOO_LARGE"},
+    {"name": "same triple different digest", "operation": "conflict", "existing": "0000000000000000000000000000000000000000000000000000000000000000", "incoming": "0100000000000000000000000000000000000000000000000000000000000000", "expected_code": "MESSAGE_ID_CONFLICT"}
+  ]
+}

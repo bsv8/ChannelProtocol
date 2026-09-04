@@ -9,10 +9,13 @@ import (
 	"fmt"
 	"os"
 	"reflect"
+	"strings"
 
 	"github.com/bsv8/ChannelProtocol"
 	"github.com/bsv8/ChannelProtocol/hashrequest"
 	"github.com/bsv8/ChannelProtocol/inbox"
+	"github.com/bsv8/ChannelProtocol/internal/strictjson"
+	"github.com/bsv8/ChannelProtocol/publicmessage"
 	"github.com/bsv8/ChannelProtocol/webrtcsignal"
 )
 
@@ -63,6 +66,7 @@ type result struct {
 	JCS            []jcsResult          `json:"jcs"`
 	HashRequest    hashResult           `json:"hash_request"`
 	PrivateMessage privateResult        `json:"private_message"`
+	PublicMessage  publicMessageResult  `json:"public_message"`
 	DedupRelations dedupRelationsResult `json:"dedup_relations"`
 	Invalid        []errorResult        `json:"invalid"`
 }
@@ -85,6 +89,62 @@ type privateResult struct {
 	Signature      string `json:"signature"`
 	OpenedProtocol string `json:"opened_protocol"`
 	OpenedBody     string `json:"opened_body"`
+}
+
+type publicMessageResult struct {
+	Cases   []publicMessageCaseResult `json:"cases"`
+	Invalid []errorResult             `json:"invalid"`
+}
+
+type publicMessageCaseResult struct {
+	Name      string   `json:"name"`
+	JSON      string   `json:"json"`
+	DigestHex string   `json:"digest_hex"`
+	Signature string   `json:"signature"`
+	BodyJSON  string   `json:"body_json"`
+	DedupKey  []string `json:"dedup_key"`
+}
+
+type publicMessageValidFixture struct {
+	PrivateKey string                   `json:"test_only_private_key_hex"`
+	PublicKey  string                   `json:"public_key"`
+	MessageID  string                   `json:"message_id"`
+	Cases      []publicMessageValidCase `json:"cases"`
+}
+
+type publicMessageValidCase struct {
+	Name      string                `json:"name"`
+	Channel   string                `json:"channel"`
+	IssuedAt  int64                 `json:"issued_at_ms"`
+	ExpiresAt int64                 `json:"expires_at_ms"`
+	Now       int64                 `json:"now_ms"`
+	Body      json.RawMessage       `json:"body"`
+	Expected  publicMessageExpected `json:"expected"`
+}
+
+type publicMessageExpected struct {
+	JSON      string   `json:"json"`
+	Digest    string   `json:"digest_hex"`
+	Signature string   `json:"signature"`
+	DedupKey  []string `json:"dedup_key"`
+}
+
+type publicMessageInvalidFixture struct {
+	Cases []publicMessageInvalidCase `json:"cases"`
+}
+
+type publicMessageInvalidCase struct {
+	Name          string `json:"name"`
+	Operation     string `json:"operation"`
+	Channel       string `json:"channel"`
+	ChannelRepeat int    `json:"channel_repeat"`
+	Now           int64  `json:"now_ms"`
+	Mutation      string `json:"mutation"`
+	JSON          string `json:"json"`
+	Generator     string `json:"generator"`
+	Existing      string `json:"existing"`
+	Incoming      string `json:"incoming"`
+	Expected      string `json:"expected_code"`
 }
 
 type errorResult struct {
@@ -124,7 +184,7 @@ func main() {
 // verifyForeignResult 读取 TypeScript 构造的 JSON，验证 Go 能独立解析、验签和解密。
 func verifyForeignResult(input fixture, data []byte) error {
 	var foreign result
-			if err := json.Unmarshal(data, &foreign); err != nil {
+	if err := json.Unmarshal(data, &foreign); err != nil {
 		return fmt.Errorf("TypeScript fixture 输出不是 result JSON: %w", err)
 	}
 	privateB, err := parsePrivateKey(input.TestOnlyPrivateKeyB)
@@ -149,6 +209,16 @@ func verifyForeignResult(input fixture, data []byte) error {
 	}
 	if _, ok := opened.WebRTCSignal(); !ok {
 		return errors.New("TypeScript 私密消息未返回 WebRTC body")
+	}
+	expectedPublicMessage, err := buildPublicMessageResult()
+	if err != nil {
+		return err
+	}
+	if err := verifyForeignPublicMessage(foreign.PublicMessage, expectedPublicMessage); err != nil {
+		return err
+	}
+	if !reflect.DeepEqual(foreign.PublicMessage, expectedPublicMessage) {
+		return fmt.Errorf("TypeScript public-message 结果与 Go 不一致: expected %v got %v", expectedPublicMessage, foreign.PublicMessage)
 	}
 	expectedDedupRelations, err := buildDedupRelations(input)
 	if err != nil {
@@ -294,6 +364,10 @@ func build(input fixture) (result, error) {
 		bodyType = "webrtc.signal.offer"
 	}
 	output.PrivateMessage = privateResult{PlaintextJSON: string(plaintext), EnvelopeJSON: string(envelopeJSON), DigestHex: opened.Digest().String(), Signature: opened.Signature().String(), OpenedProtocol: opened.Protocol(), OpenedBody: bodyType}
+	output.PublicMessage, err = buildPublicMessageResult()
+	if err != nil {
+		return result{}, err
+	}
 
 	output.DedupRelations, err = buildDedupRelations(input)
 	if err != nil {
@@ -307,6 +381,268 @@ func build(input fixture) (result, error) {
 		return result{}, err
 	}
 	return output, nil
+}
+
+func buildPublicMessageResult() (publicMessageResult, error) {
+	validData, err := os.ReadFile("testdata/v1/public-message-valid.json")
+	if err != nil {
+		return publicMessageResult{}, err
+	}
+	var valid publicMessageValidFixture
+	if err := json.Unmarshal(validData, &valid); err != nil {
+		return publicMessageResult{}, err
+	}
+	privateKey, err := parsePrivateKey(valid.PrivateKey)
+	if err != nil {
+		return publicMessageResult{}, err
+	}
+	publicKey, err := channels.ParsePublicKey(valid.PublicKey)
+	if err != nil {
+		return publicMessageResult{}, err
+	}
+	messageID, err := channels.ParseMessageID(valid.MessageID)
+	if err != nil {
+		return publicMessageResult{}, err
+	}
+	result := publicMessageResult{
+		Cases:   make([]publicMessageCaseResult, 0, len(valid.Cases)),
+		Invalid: nil,
+	}
+	for _, item := range valid.Cases {
+		body, err := strictjson.Parse(item.Body)
+		if err != nil {
+			return publicMessageResult{}, fmt.Errorf("public-message fixture %s body: %w", item.Name, err)
+		}
+		signed, err := publicmessage.Sign(publicmessage.UnsignedMessage{
+			Channel:       item.Channel,
+			FromPublicKey: publicKey,
+			MessageID:     messageID,
+			IssuedAtMs:    item.IssuedAt,
+			ExpiresAtMs:   item.ExpiresAt,
+			Body:          body,
+		}, privateKey)
+		if err != nil {
+			return publicMessageResult{}, fmt.Errorf("public-message fixture %s sign: %w", item.Name, err)
+		}
+		wire, err := publicmessage.Marshal(signed)
+		if err != nil {
+			return publicMessageResult{}, fmt.Errorf("public-message fixture %s marshal: %w", item.Name, err)
+		}
+		verified, err := publicmessage.ParseAndVerify(item.Channel, wire, item.Now)
+		if err != nil {
+			return publicMessageResult{}, fmt.Errorf("public-message fixture %s verify: %w", item.Name, err)
+		}
+		bodyJSON, err := channels.CanonicalizeValue(verified.Body())
+		if err != nil {
+			return publicMessageResult{}, err
+		}
+		key := verified.DedupKey()
+		actual := publicMessageCaseResult{
+			Name:      item.Name,
+			JSON:      string(wire),
+			DigestHex: verified.Digest().String(),
+			Signature: verified.Signature().String(),
+			BodyJSON:  string(bodyJSON),
+			DedupKey:  []string{key.Channel, key.FromPublicKey.String(), key.MessageID.String()},
+		}
+		if actual.JSON != item.Expected.JSON || actual.DigestHex != item.Expected.Digest || actual.Signature != item.Expected.Signature || !reflect.DeepEqual(actual.DedupKey, item.Expected.DedupKey) {
+			return publicMessageResult{}, fmt.Errorf("public-message fixture %s expected 与 Go 构造结果不一致", item.Name)
+		}
+		result.Cases = append(result.Cases, actual)
+	}
+	invalidData, err := os.ReadFile("testdata/v1/public-message-invalid.json")
+	if err != nil {
+		return publicMessageResult{}, err
+	}
+	var invalid publicMessageInvalidFixture
+	if err := json.Unmarshal(invalidData, &invalid); err != nil {
+		return publicMessageResult{}, err
+	}
+	base := valid.Cases[0].Expected.JSON
+	result.Invalid = make([]errorResult, 0, len(invalid.Cases))
+	for _, item := range invalid.Cases {
+		err := publicMessageInvalidError(item, base)
+		code := errorCode(err)
+		if code != item.Expected {
+			return publicMessageResult{}, fmt.Errorf("public-message invalid fixture %s expected %s got %s", item.Name, item.Expected, code)
+		}
+		result.Invalid = append(result.Invalid, errorResult{Name: "public-message/" + item.Name, Code: code})
+	}
+	return result, nil
+}
+
+func publicMessageInvalidError(item publicMessageInvalidCase, base string) error {
+	if item.Operation == "conflict" {
+		existing, err := channels.ParseSHA256Hash(item.Existing)
+		if err != nil {
+			return err
+		}
+		incoming, err := channels.ParseSHA256Hash(item.Incoming)
+		if err != nil {
+			return err
+		}
+		return publicmessage.CheckDigestConflict(existing, incoming)
+	}
+	if item.Operation == "parse_raw" {
+		_, err := publicmessage.ParseAndVerify(item.Channel, []byte(item.JSON), item.Now)
+		return err
+	}
+	if item.Operation == "generated" {
+		return publicMessageGeneratedInvalidError(item, base)
+	}
+	channel := item.Channel
+	if item.ChannelRepeat != 0 {
+		channel += strings.Repeat("a", item.ChannelRepeat)
+	}
+	input, err := mutatePublicMessage(base, item.Mutation)
+	if err != nil {
+		return err
+	}
+	_, err = publicmessage.ParseAndVerify(channel, input, item.Now)
+	return err
+}
+
+func mutatePublicMessage(base, mutation string) ([]byte, error) {
+	if mutation == "none" {
+		return []byte(base), nil
+	}
+	var object map[string]json.RawMessage
+	if err := json.Unmarshal([]byte(base), &object); err != nil {
+		return nil, err
+	}
+	set := func(field string, value any) error {
+		raw, err := json.Marshal(value)
+		if err != nil {
+			return err
+		}
+		object[field] = raw
+		return nil
+	}
+	switch mutation {
+	case "missing_body":
+		delete(object, "body")
+	case "missing_signature":
+		delete(object, "signature")
+	case "unknown_field":
+		if err := set("unknown", 1); err != nil {
+			return nil, err
+		}
+	case "content_old_shape":
+		delete(object, "body")
+		if err := set("content", map[string]any{"legacy": true}); err != nil {
+			return nil, err
+		}
+	case "wrong_public_key_type":
+		if err := set("from_public_key", 1); err != nil {
+			return nil, err
+		}
+	case "issued_equals_expires":
+		if err := set("issued_at_ms", 2000); err != nil {
+			return nil, err
+		}
+	case "lifetime_over_max":
+		if err := set("expires_at_ms", 601001); err != nil {
+			return nil, err
+		}
+	case "future_skew_over_max":
+		if err := set("issued_at_ms", 61001); err != nil {
+			return nil, err
+		}
+		if err := set("expires_at_ms", 661001); err != nil {
+			return nil, err
+		}
+	case "wrong_public_key":
+		if err := set("from_public_key", "02c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5"); err != nil {
+			return nil, err
+		}
+	case "wrong_signature":
+		if err := set("signature", "AAAA"); err != nil {
+			return nil, err
+		}
+	case "high_s_signature":
+		if err := set("signature", "MEYCIQCxjq-UdL-zqecurQmubV2d3utTgDMA2IDsiMy6u5hlNwIhAPnZHMoNmmiRZouM9yy6amfqHJmlDd9SDYcXXForlxYe"); err != nil {
+			return nil, err
+		}
+	case "tampered_body":
+		if err := set("body", map[string]any{"tampered": true}); err != nil {
+			return nil, err
+		}
+	case "tampered_message_id":
+		if err := set("message_id", "AQ"+strings.Repeat("A", 41)); err != nil {
+			return nil, err
+		}
+	case "tampered_time":
+		if err := set("issued_at_ms", 1001); err != nil {
+			return nil, err
+		}
+	default:
+		return nil, fmt.Errorf("unknown public-message mutation %q", mutation)
+	}
+	return json.Marshal(object)
+}
+
+func publicMessageGeneratedInvalidError(item publicMessageInvalidCase, base string) error {
+	switch item.Generator {
+	case "oversized":
+		var object map[string]json.RawMessage
+		if err := json.Unmarshal([]byte(base), &object); err != nil {
+			return err
+		}
+		body, err := json.Marshal(strings.Repeat("x", strictjson.MaxJSONBytes))
+		if err != nil {
+			return err
+		}
+		object["body"] = body
+		input, err := json.Marshal(object)
+		if err != nil {
+			return err
+		}
+		_, err = publicmessage.ParseAndVerify(item.Channel, input, item.Now)
+		return err
+	case "too_deep":
+		input := []byte(strings.Repeat("[", strictjson.MaxJSONDepth+1) + "0" + strings.Repeat("]", strictjson.MaxJSONDepth+1))
+		_, err := publicmessage.ParseAndVerify(item.Channel, input, item.Now)
+		return err
+	case "too_many_nodes":
+		input := []byte("[" + strings.TrimSuffix(strings.Repeat("0,", strictjson.MaxJSONNodes), ",") + "]")
+		_, err := publicmessage.ParseAndVerify(item.Channel, input, item.Now)
+		return err
+	default:
+		return fmt.Errorf("unknown public-message generator %q", item.Generator)
+	}
+}
+
+func verifyForeignPublicMessage(foreign, expected publicMessageResult) error {
+	validData, err := os.ReadFile("testdata/v1/public-message-valid.json")
+	if err != nil {
+		return err
+	}
+	var valid publicMessageValidFixture
+	if err := json.Unmarshal(validData, &valid); err != nil {
+		return err
+	}
+	if len(foreign.Cases) != len(expected.Cases) {
+		return fmt.Errorf("foreign public-message case 数量不一致")
+	}
+	for index, actual := range foreign.Cases {
+		item := valid.Cases[index]
+		verified, err := publicmessage.ParseAndVerify(item.Channel, []byte(actual.JSON), item.Now)
+		if err != nil {
+			return fmt.Errorf("Go 无法验签 TypeScript public-message %s: %w", item.Name, err)
+		}
+		bodyJSON, err := channels.CanonicalizeValue(verified.Body())
+		if err != nil {
+			return err
+		}
+		key := verified.DedupKey()
+		if actual.Name != item.Name || actual.JSON != expected.Cases[index].JSON || actual.DigestHex != verified.Digest().String() || actual.Signature != verified.Signature().String() || actual.BodyJSON != string(bodyJSON) || !reflect.DeepEqual(actual.DedupKey, []string{key.Channel, key.FromPublicKey.String(), key.MessageID.String()}) {
+			return fmt.Errorf("foreign public-message %s 内容、摘要、签名、body 或去重键不一致", item.Name)
+		}
+	}
+	if !reflect.DeepEqual(foreign.Invalid, expected.Invalid) {
+		return fmt.Errorf("foreign public-message invalid 结果不一致")
+	}
+	return nil
 }
 
 func invalidResults(input fixture) ([]errorResult, error) {

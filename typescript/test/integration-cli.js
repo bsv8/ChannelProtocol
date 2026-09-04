@@ -7,6 +7,7 @@ import * as appmessage from "../dist/app-message/index.js";
 import * as hashrequest from "../dist/hash-request/index.js";
 import * as inbox from "../dist/inbox/index.js";
 import * as ping from "../dist/ping/index.js";
+import * as publicmessage from "../dist/public-message/index.js";
 import * as webrtc from "../dist/webrtc-signal/index.js";
 
 const fixture = JSON.parse(fs.readFileSync(new URL("../../testdata/v1/interop-v1.json", import.meta.url), "utf8"));
@@ -276,6 +277,104 @@ async function expectedInvalid() {
   return invalid.concat(await sharedInvalidResults());
 }
 
+function publicMessageInvalidInput(item, baseJSON) {
+  if (item.operation === "parse_raw") return item.json;
+  if (item.operation === "generated") {
+    if (item.generator === "oversized") {
+      const object = JSON.parse(baseJSON);
+      object.body = "x".repeat(channels.MAX_JSON_BYTES);
+      return JSON.stringify(object);
+    }
+    if (item.generator === "too_deep") return `${"[".repeat(channels.MAX_JSON_DEPTH + 1)}0${"]".repeat(channels.MAX_JSON_DEPTH + 1)}`;
+    if (item.generator === "too_many_nodes") return `[${Array(channels.MAX_JSON_NODES).fill("0").join(",")}]`;
+    throw new Error(`unknown public-message generator ${item.generator}`);
+  }
+  if (item.mutation === "none") return baseJSON;
+  const object = JSON.parse(baseJSON);
+  switch (item.mutation) {
+    case "missing_body": delete object.body; break;
+    case "missing_signature": delete object.signature; break;
+    case "unknown_field": object.unknown = 1; break;
+    case "content_old_shape": delete object.body; object.content = { legacy: true }; break;
+    case "wrong_public_key_type": object.from_public_key = 1; break;
+    case "issued_equals_expires": object.issued_at_ms = 2000; break;
+    case "lifetime_over_max": object.expires_at_ms = 601001; break;
+    case "future_skew_over_max": object.issued_at_ms = 61001; object.expires_at_ms = 661001; break;
+    case "wrong_public_key": object.from_public_key = fixture.public_key_b; break;
+    case "wrong_signature": object.signature = "AAAA"; break;
+    case "high_s_signature": object.signature = "MEYCIQCxjq-UdL-zqecurQmubV2d3utTgDMA2IDsiMy6u5hlNwIhAPnZHMoNmmiRZouM9yy6amfqHJmlDd9SDYcXXForlxYe"; break;
+    case "tampered_body": object.body = { tampered: true }; break;
+    case "tampered_message_id": object.message_id = `AQ${"A".repeat(41)}`; break;
+    case "tampered_time": object.issued_at_ms = 1001; break;
+    default: throw new Error(`unknown public-message mutation ${item.mutation}`);
+  }
+  return JSON.stringify(object);
+}
+
+function buildPublicMessage() {
+  const valid = readTestFixture("public-message-valid.json");
+  const privateKey = channels.parsePrivateKey(bytesFromHex(valid.test_only_private_key_hex));
+  const publicKey = channels.parsePublicKey(valid.public_key);
+  const messageID = channels.parseMessageID(valid.message_id);
+  const cases = valid.cases.map((item) => {
+    const signed = publicmessage.sign({
+      channel: item.channel,
+      from_public_key: publicKey,
+      message_id: messageID,
+      issued_at_ms: item.issued_at_ms,
+      expires_at_ms: item.expires_at_ms,
+      body: item.body,
+    }, privateKey);
+    const json = textDecoder.decode(publicmessage.marshal(signed));
+    const verified = publicmessage.parseAndVerify(item.channel, json, item.now_ms);
+    const key = publicmessage.dedupKey(verified);
+    const actual = {
+      name: item.name,
+      json,
+      digest_hex: verified.digest,
+      signature: verified.signature,
+      body_json: textDecoder.decode(channels.canonicalizeValue(verified.body)),
+      dedup_key: [key.channel, key.from_public_key, key.message_id],
+    };
+    assert.equal(actual.json, item.expected.json, `public-message fixture ${item.name}`);
+    assert.equal(actual.digest_hex, item.expected.digest_hex, `public-message fixture ${item.name}`);
+    assert.equal(actual.signature, item.expected.signature, `public-message fixture ${item.name}`);
+    assert.deepEqual(actual.dedup_key, item.expected.dedup_key, `public-message fixture ${item.name}`);
+    return actual;
+  });
+
+  const invalid = readTestFixture("public-message-invalid.json").cases.map((item) => {
+    let code;
+    if (item.operation === "conflict") {
+      code = expectCode(() => publicmessage.checkDigestConflict(channels.parseSHA256Hash(item.existing), channels.parseSHA256Hash(item.incoming)), item.expected_code);
+    } else {
+      const channel = item.channel + (item.channel_repeat ? "a".repeat(item.channel_repeat) : "");
+      const input = publicMessageInvalidInput(item, valid.cases[0].expected.json);
+      code = expectCode(() => publicmessage.parseAndVerify(channel, input, item.now_ms), item.expected_code);
+    }
+    return { name: `public-message/${item.name}`, code };
+  });
+  return { cases, invalid };
+}
+
+function verifyForeignPublicMessage(foreign, expected) {
+  const valid = readTestFixture("public-message-valid.json");
+  assert.equal(foreign.cases.length, expected.cases.length);
+  for (let index = 0; index < foreign.cases.length; index += 1) {
+    const item = valid.cases[index];
+    const actual = foreign.cases[index];
+    const verified = publicmessage.parseAndVerify(item.channel, actual.json, item.now_ms);
+    const key = publicmessage.dedupKey(verified);
+    assert.equal(actual.name, item.name);
+    assert.equal(actual.json, expected.cases[index].json);
+    assert.equal(actual.digest_hex, verified.digest);
+    assert.equal(actual.signature, verified.signature);
+    assert.equal(actual.body_json, textDecoder.decode(channels.canonicalizeValue(verified.body)));
+    assert.deepEqual(actual.dedup_key, [key.channel, key.from_public_key, key.message_id]);
+  }
+  assert.deepEqual(foreign.invalid, expected.invalid);
+}
+
 async function build() {
   const jcs = fixture.jcs.map((item) => {
     const actual = hex(channels.canonicalizeJSON(item.input));
@@ -331,6 +430,7 @@ async function build() {
   assert.equal(opened.body.signal.type, "offer");
 
   validateSharedValidFixtures();
+  const public_message = buildPublicMessage();
   const dedup_relations = await buildDedupRelations();
   const invalid = await expectedInvalid();
 
@@ -349,6 +449,7 @@ async function build() {
       opened_protocol: opened.protocol,
       opened_body: "webrtc.signal.offer",
     },
+    public_message,
     dedup_relations,
     invalid,
   };
@@ -364,6 +465,9 @@ async function verifyGo(path) {
   assert.equal(opened.signature, fixture.private_message.signature);
   assert.equal(opened.digest, fixture.private_message.digest_hex);
   assert.equal(opened.protocol, channels.WEBRTC_SIGNAL_PROTOCOL);
+  const expectedPublicMessage = buildPublicMessage();
+  verifyForeignPublicMessage(foreign.public_message, expectedPublicMessage);
+  assert.deepEqual(foreign.public_message, expectedPublicMessage);
   assert.deepEqual(foreign.dedup_relations, await buildDedupRelations());
   assert.deepEqual(foreign.invalid, await expectedInvalid());
 }

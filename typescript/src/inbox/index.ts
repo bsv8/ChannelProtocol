@@ -29,13 +29,30 @@ import { MAX_JSON_BYTES } from "../internal/limits.js";
 import { isJSONObject, JSONValue, parseStrictJSON, requireExactObjectKeys, requireField, requireObjectKeys } from "../internal/strict-json.js";
 import { ecdh as ecdhImported, signDigest as signDigestImported, verifyDigest as verifyDigestImported } from "../internal/secp256k1.js";
 import { cloneAndFreeze, freezeDeep } from "../internal/immutable.js";
-import { MessageV1Body, parseBodyValue as parseAppBodyValue, validateBody as validateAppBody } from "../app-message/index.js";
-import { SessionKey, WebRTCSignalV1Body, parseBodyValue as parseWebRTCBodyValue, sessionKey, validateBody as validateWebRTCBody } from "../webrtc-signal/index.js";
-import { PingBody, PongBody, parseBodyValue as parsePingBodyValue, validateBody as validatePingBody } from "../ping/index.js";
+import { MAX_LIFETIME_MS as APP_MESSAGE_MAX_LIFETIME_MS, MessageV1Body, parseBodyValue as parseAppBodyValue, validateBody as validateAppBody } from "../app-message/index.js";
+import { MAX_LIFETIME_MS as WEBRTC_MAX_LIFETIME_MS, SessionKey, WebRTCSignalV1Body, parseBodyValue as parseWebRTCBodyValue, sessionKey, validateBody as validateWebRTCBody } from "../webrtc-signal/index.js";
+import { MAX_LIFETIME_MS as PING_MAX_LIFETIME_MS, PingBody, PongBody, parseBodyValue as parsePingBodyValue, validateBody as validatePingBody } from "../ping/index.js";
 import type { VerifiedHashRequest } from "../hash-request/index.js";
 import { isVerifiedHashRequest } from "../hash-request/index.js";
 
 export { INBOX_CHANNEL_PREFIX, INBOX_ENVELOPE_VERSION };
+
+/**
+ * 私密消息默认的最大有效期（24 小时）。调用方可以选择更短的有效期，
+ * 但不能超过对应子协议的上限。
+ */
+export const PRIVATE_MESSAGE_DEFAULT_MAX_LIFETIME_MS = APP_MESSAGE_MAX_LIFETIME_MS;
+/** Ping/Pong 私密消息的最大有效期（60 秒）。 */
+export const PING_PRIVATE_MESSAGE_MAX_LIFETIME_MS = PING_MAX_LIFETIME_MS;
+/** WebRTC SDP/ICE 私密消息的最大有效期（120 秒）。 */
+export const WEBRTC_PRIVATE_MESSAGE_MAX_LIFETIME_MS = WEBRTC_MAX_LIFETIME_MS;
+
+/** 返回指定私密子协议允许的最大有效期；未知协议使用默认上限。 */
+export function privateMessageMaxLifetimeMs(protocol: string): number {
+  if (protocol === WEBRTC_SIGNAL_PROTOCOL) return WEBRTC_PRIVATE_MESSAGE_MAX_LIFETIME_MS;
+  if (protocol === PING_PROTOCOL) return PING_PRIVATE_MESSAGE_MAX_LIFETIME_MS;
+  return PRIVATE_MESSAGE_DEFAULT_MAX_LIFETIME_MS;
+}
 
 const verifiedPrivateMessages = new WeakSet<object>();
 
@@ -160,6 +177,34 @@ export function signPrivateMessage(message: UnsignedPrivateMessage, privateKey: 
   checkIdentity(derived, snapshot.from_public_key, "私钥推导公钥与 from_public_key 不一致");
   const digest = signingDigest(snapshot);
   return freezeDeep({ ...snapshot, signature: signDigestWithPrivate(privateKey, digest) });
+}
+
+/**
+ * 验证一条本地已签名私密消息并提升为关系校验可用的 verified 值。
+ *
+ * 该入口不执行解密；适用于发送方保留自己刚生成的 Ping，随后用
+ * `validatePongRelation` 校验收到的 Pong。远端密文仍必须先经过 `open`。
+ */
+export function verifySignedPrivateMessage(message: SignedPrivateMessage, nowMs: number): VerifiedPrivateMessage {
+  parseUnixMillis(nowMs, "now_ms");
+  validateUnsigned(message, true);
+  parseSignature(message.signature);
+  const digest = signingDigest(message);
+  verifyDigestWithPublic(message.from_public_key, digest, message.signature);
+  validatePrivateTimes(message.issued_at_ms, message.expires_at_ms, nowMs, message.protocol, true);
+  const recipient = parseInboxChannel(message.channel, INBOX_CHANNEL_PREFIX);
+  return verifiedPrivateMessage({
+    channel: message.channel,
+    from_public_key: message.from_public_key,
+    to_public_key: recipient,
+    protocol: message.protocol,
+    message_id: message.message_id,
+    issued_at_ms: message.issued_at_ms,
+    expires_at_ms: message.expires_at_ms,
+    body: message.body,
+    signature: message.signature,
+    digest: sha256HashFromBytes(digest),
+  });
 }
 
 /** 输出已签名私密消息明文的规范 JCS JSON；不包含 channel/from_public_key。 */
@@ -416,7 +461,7 @@ function validatePrivateTimes(issued: number, expires: number, now: number, prot
   parseUnixMillis(issued, "issued_at_ms");
   parseUnixMillis(expires, "expires_at_ms");
   if (issued >= expires) throw protocolError(ERROR_CODES.INVALID_TIME, "私密消息时间顺序不合法");
-  const maxLifetime = protocol === WEBRTC_SIGNAL_PROTOCOL ? 2 * 60 * 1000 : protocol === PING_PROTOCOL ? 60 * 1000 : 24 * 60 * 60 * 1000;
+  const maxLifetime = privateMessageMaxLifetimeMs(protocol);
   if (expires - issued > maxLifetime) throw protocolError(ERROR_CODES.INVALID_TIME, "私密消息有效期超过子协议上限");
   if (checkCurrent && issued > now && issued - now > 60 * 1000) throw protocolError(ERROR_CODES.INVALID_TIME, "私密消息发布时间超出本地时钟容差");
   if (checkCurrent && now >= expires) throw protocolError(ERROR_CODES.MESSAGE_EXPIRED, "私密消息已过期");

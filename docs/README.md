@@ -19,9 +19,10 @@ docs/v1/
 ├── 03-WebRTC-SDP子协议.md
 ├── 04-应用消息子协议.md
 ├── 05-Ping-Pong子协议.md
+├── 06-通用公开消息.md
 ├── PrivateMessage-消融规划.md
 └── 协议族-消融实验.md
 ```
 
-协议标识和字段版本保持 V1；项目包/API 版本为 `0.2.0`。CP 不实现 HTTP、WebSocket、
+协议标识和字段版本保持 V1；待发布项目包/API 版本为 `0.3.0`。CP 不实现 HTTP、WebSocket、
 libp2p、SSP、WebRTC Peer、付款账本或持久化去重表。
