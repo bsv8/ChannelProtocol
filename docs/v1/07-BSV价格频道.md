@@ -57,7 +57,7 @@ bsvprice.02aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
 | --- | --- | --- |
 | `protocol` | 价格业务协议标识 | 固定 `bsv8.bsv-price.v1` |
 | `snapshot_at_ms` | 行情源生成完整快照的 Unix 毫秒 | 非负 JSON safe integer |
-| `markets` | 市场到交易对价格的映射 | 至少一个市场，最多 100 个 |
+| `markets` | 市场到交易对价格的映射 | 0 至 100 个市场；空对象用于明确清除全部行情 |
 | 市场 key | 市场编号 | 小写字母、数字、点、短横线、下划线；最多 64 UTF-8 字节 |
 | 交易对 key | 交易对编号 | 与市场 key 相同的字符规则；每个市场至少一个、最多 100 个 |
 | 价格 value | 十进制价格字符串 | `^(0|[1-9][0-9]*)(\\.[0-9]+)?$`，最多 128 UTF-8 字节 |
@@ -68,8 +68,9 @@ bsvprice.02aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
 ## 4. 快照语义
 
 每条消息都是完整快照，不是增量更新。订阅端收到新消息后整体替换 `markets`；缺少的
-市场或交易对不应继续沿用上一条消息的旧值。订阅端应按 `snapshot_at_ms` 忽略更旧或相同
-的快照，以抵抗网络乱序。
+市场或交易对不应继续沿用上一条消息的旧值。`markets: {}` 是合法的完整快照，用于发布端
+明确表示当前没有任何可用行情，订阅端收到后应清除已展示价格并进入等待/无报价状态。订阅端
+应按 `snapshot_at_ms` 忽略更旧或相同的快照，以抵抗网络乱序。
 
 公开消息仍遵守通用壳的 10 分钟最长有效期和 60 秒未来时钟偏差规则。`snapshot_at_ms`
 表达行情源生成时间，不能用接收端本地时间代替。

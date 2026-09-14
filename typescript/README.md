@@ -1,6 +1,6 @@
 # `bsv8-channel-protocol`
 
-Channel Protocol V1 的 TypeScript SDK，当前发布项目包版本为 `0.4.0`。
+Channel Protocol V1 的 TypeScript SDK，当前发布项目包版本为 `0.5.0`。
 
 目标边界：
 

@@ -59,3 +59,28 @@ test("BSV 价格正文拒绝浮点价格和非法编号", () => {
   }), (error) => error?.code === "INVALID_BODY");
   assert.throws(() => bsvprice.parseBSVPriceChannel("bsvprice.bad"), (error) => error?.code === "INVALID_CHANNEL");
 });
+
+test("BSV 价格正文拒绝标点作为市场或交易对首字符", () => {
+  for (const invalid of [".gate", "-gate", "_gate"]) {
+    assert.throws(() => bsvprice.parseBody({
+      protocol: bsvprice.BSV_PRICE_PROTOCOL,
+      snapshot_at_ms: 1,
+      markets: { [invalid]: { bsvusdt: "1" } },
+    }), (error) => error?.code === "INVALID_BODY", invalid);
+    assert.throws(() => bsvprice.parseBody({
+      protocol: bsvprice.BSV_PRICE_PROTOCOL,
+      snapshot_at_ms: 1,
+      markets: { gate: { [invalid]: "1" } },
+    }), (error) => error?.code === "INVALID_BODY", invalid);
+  }
+});
+
+test("BSV 价格正文允许空市场快照", () => {
+  const body = bsvprice.newBody(1, {});
+  assert.deepEqual(body.markets, {});
+  assert.deepEqual(bsvprice.parseBody({
+    protocol: bsvprice.BSV_PRICE_PROTOCOL,
+    snapshot_at_ms: 1,
+    markets: {},
+  }).markets, {});
+});

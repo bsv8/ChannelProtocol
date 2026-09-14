@@ -48,12 +48,6 @@ export interface BSVPriceBody {
   readonly markets: Readonly<Record<string, Readonly<Record<string, string>>>>;
 }
 
-/** 价格正文的简短别名。 */
-export type Body = BSVPriceBody;
-
-/** 价格正文的完整协议名称别名。 */
-export type PriceBody = BSVPriceBody;
-
 /** 待签名的 BSV 价格公开消息。 */
 export interface UnsignedBSVPriceMessage {
   /** 价格发布者长期压缩公钥。 */
@@ -101,12 +95,6 @@ export function bsvPriceChannel(publicKey: PublicKey): string {
   return `${BSV_PRICE_CHANNEL_PREFIX}${publicKey}`;
 }
 
-/** bsvPriceChannel 的构造别名。 */
-export const buildPriceChannel = bsvPriceChannel;
-
-/** bsvPriceChannel 的简短别名。 */
-export const channel = bsvPriceChannel;
-
 /** 严格解析 bsvprice.<public_key_hex> 并返回发布者公钥。 */
 export function parseBSVPriceChannel(value: string): PublicKey {
   if (typeof value !== "string" || !value.startsWith(BSV_PRICE_CHANNEL_PREFIX)) {
@@ -118,9 +106,6 @@ export function parseBSVPriceChannel(value: string): PublicKey {
     throw protocolError(ERROR_CODES.INVALID_CHANNEL, "BSV 价格频道发布者公钥不合法", cause);
   }
 }
-
-/** parseBSVPriceChannel 的简短别名。 */
-export const parseChannel = parseBSVPriceChannel;
 
 /** 构造带固定协议标识的价格正文。 */
 export function newBody(
@@ -145,8 +130,8 @@ export function validateBody(value: unknown): asserts value is BSVPriceBody {
   }
   const markets = body.markets as Record<string, unknown>;
   const marketNames = Object.keys(markets);
-  if (marketNames.length === 0 || marketNames.length > MAX_MARKETS) {
-    throw protocolError(ERROR_CODES.INVALID_BODY, "markets 必须包含 1 至 100 个市场");
+  if (marketNames.length > MAX_MARKETS) {
+    throw protocolError(ERROR_CODES.INVALID_BODY, "markets 必须包含 0 至 100 个市场");
   }
   for (const market of marketNames) {
     validateIdentifier(market, "市场");

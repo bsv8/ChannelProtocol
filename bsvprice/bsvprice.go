@@ -17,12 +17,8 @@ import (
 const (
 	// Protocol 是 BSV 价格正文的业务协议标识。
 	Protocol = protocol.BSVPriceProtocol
-	// BSVPriceProtocol 是 Protocol 的语义化别名。
-	BSVPriceProtocol = Protocol
 	// ChannelPrefix 是价格频道的固定前缀。
 	ChannelPrefix = protocol.BSVPriceChannelPrefix
-	// BSVPriceChannelPrefix 是 ChannelPrefix 的语义化别名。
-	BSVPriceChannelPrefix = ChannelPrefix
 
 	maxSafeInteger     int64 = 9_007_199_254_740_991
 	maxMarkets               = 100
@@ -31,11 +27,11 @@ const (
 	maxPriceBytes            = 128
 )
 
-// Body 是一次完整的 BSV 多市场、多交易对价格快照。
+// BSVPriceBody 是一次完整的 BSV 多市场、多交易对价格快照。
 //
 // Markets 的第一层 key 是市场编号（例如 gate、okx），第二层 key 是交易对
 // 编号（例如 bsvusdt、bsvcny），价格使用十进制字符串以避免浮点精度损失。
-type Body struct {
+type BSVPriceBody struct {
 	// Protocol 固定为 bsv8.bsv-price.v1。
 	Protocol string `json:"protocol"`
 	// SnapshotAtMs 是行情源生成本次完整快照的 Unix 毫秒时间。
@@ -43,12 +39,6 @@ type Body struct {
 	// Markets 是市场编号到交易对价格的映射。
 	Markets map[string]map[string]string `json:"markets"`
 }
-
-// PriceBody 是 Body 的兼容性语义别名。
-type PriceBody = Body
-
-// BSVPriceBody 是 Body 的完整协议名称别名。
-type BSVPriceBody = Body
 
 // UnsignedMessage 是待签名的 BSV 价格公开消息。
 // 频道由 FromPublicKey 派生，不重复作为消息字段传入。
@@ -62,7 +52,7 @@ type UnsignedMessage struct {
 	// ExpiresAtMs 是公开消息过期时间 Unix 毫秒。
 	ExpiresAtMs int64
 	// Body 是完整价格快照正文。
-	Body Body
+	Body BSVPriceBody
 }
 
 // SignedMessage 是已经生成唯一业务签名的 BSV 价格消息。
@@ -92,16 +82,6 @@ func Channel(publisherPublicKey encoding.PublicKey) string {
 	return ChannelPrefix + publisherPublicKey.String()
 }
 
-// BSVPriceChannel 是 Channel 的语义化别名。
-func BSVPriceChannel(publisherPublicKey encoding.PublicKey) string {
-	return Channel(publisherPublicKey)
-}
-
-// BuildChannel 是 Channel 的构造别名，方便业务端从配置公钥生成频道。
-func BuildChannel(publisherPublicKey encoding.PublicKey) string {
-	return Channel(publisherPublicKey)
-}
-
 // ParseChannel 严格解析 bsvprice.<public_key_hex> 并返回频道发布者公钥。
 func ParseChannel(channel string) (encoding.PublicKey, error) {
 	if len(channel) <= len(ChannelPrefix) || !strings.HasPrefix(channel, ChannelPrefix) {
@@ -114,72 +94,67 @@ func ParseChannel(channel string) (encoding.PublicKey, error) {
 	return key, nil
 }
 
-// ParseBSVPriceChannel 是 ParseChannel 的语义化别名。
-func ParseBSVPriceChannel(channel string) (encoding.PublicKey, error) {
-	return ParseChannel(channel)
-}
-
 // NewBody 构造并校验带固定协议标识的价格快照正文。
-func NewBody(snapshotAtMs int64, markets map[string]map[string]string) (Body, error) {
-	return normalizeBody(Body{Protocol: Protocol, SnapshotAtMs: snapshotAtMs, Markets: markets})
+func NewBody(snapshotAtMs int64, markets map[string]map[string]string) (BSVPriceBody, error) {
+	return normalizeBody(BSVPriceBody{Protocol: Protocol, SnapshotAtMs: snapshotAtMs, Markets: markets})
 }
 
 // ValidateBody 校验价格正文，不会持有或修改调用方的 map。
-func ValidateBody(body Body) error {
+func ValidateBody(body BSVPriceBody) error {
 	_, err := normalizeBody(body)
 	return err
 }
 
 // ParseBody 将已解析的 JSON object 转换为强类型价格正文。
-func ParseBody(value any) (Body, error) {
+func ParseBody(value any) (BSVPriceBody, error) {
 	object, ok := coerceObject(value)
 	if !ok {
-		return Body{}, protocolerror.New(protocolerror.InvalidBody, "BSV 价格 body 必须是 object")
+		return BSVPriceBody{}, protocolerror.New(protocolerror.InvalidBody, "BSV 价格 body 必须是 object")
 	}
 	if err := strictjson.RequireObjectKeys(object, "protocol", "snapshot_at_ms", "markets"); err != nil {
-		return Body{}, err
+		return BSVPriceBody{}, err
 	}
 	protocolValue, err := strictjson.RequireField(object, "protocol")
 	if err != nil {
-		return Body{}, err
+		return BSVPriceBody{}, err
 	}
 	protocolText, ok := protocolValue.(string)
 	if !ok {
-		return Body{}, protocolerror.New(protocolerror.InvalidBody, "protocol 必须是 string")
+		return BSVPriceBody{}, protocolerror.New(protocolerror.InvalidBody, "protocol 必须是 string")
 	}
 	snapshotValue, err := strictjson.RequireField(object, "snapshot_at_ms")
 	if err != nil {
-		return Body{}, err
+		return BSVPriceBody{}, err
 	}
 	snapshotAtMs, err := parseSnapshotMillis(snapshotValue)
 	if err != nil {
-		return Body{}, err
+		return BSVPriceBody{}, err
 	}
 	marketsValue, err := strictjson.RequireField(object, "markets")
 	if err != nil {
-		return Body{}, err
+		return BSVPriceBody{}, err
 	}
 	marketsObject, ok := marketsValue.(map[string]strictjson.JSONValue)
 	if !ok {
-		return Body{}, protocolerror.New(protocolerror.InvalidBody, "markets 必须是 object")
+		return BSVPriceBody{}, protocolerror.New(protocolerror.InvalidBody, "markets 必须是 object")
 	}
 	markets := make(map[string]map[string]string, len(marketsObject))
 	for market, rawQuotes := range marketsObject {
 		quotesObject, ok := rawQuotes.(map[string]strictjson.JSONValue)
 		if !ok {
-			return Body{}, protocolerror.New(protocolerror.InvalidBody, "每个市场必须是交易对 object")
+			return BSVPriceBody{}, protocolerror.New(protocolerror.InvalidBody, "每个市场必须是交易对 object")
 		}
 		quotes := make(map[string]string, len(quotesObject))
 		for pair, rawPrice := range quotesObject {
 			price, ok := rawPrice.(string)
 			if !ok {
-				return Body{}, protocolerror.New(protocolerror.InvalidBody, "价格必须是十进制 string")
+				return BSVPriceBody{}, protocolerror.New(protocolerror.InvalidBody, "价格必须是十进制 string")
 			}
 			quotes[pair] = price
 		}
 		markets[market] = quotes
 	}
-	return normalizeBody(Body{Protocol: protocolText, SnapshotAtMs: snapshotAtMs, Markets: markets})
+	return normalizeBody(BSVPriceBody{Protocol: protocolText, SnapshotAtMs: snapshotAtMs, Markets: markets})
 }
 
 // Sign 校验价格消息并生成确定性的公开消息签名。
@@ -287,7 +262,7 @@ func (message VerifiedMessage) IssuedAtMs() int64 { return message.signed.Issued
 func (message VerifiedMessage) ExpiresAtMs() int64 { return message.signed.ExpiresAtMs }
 
 // Body 返回价格正文的防御性深拷贝。
-func (message VerifiedMessage) Body() Body { return cloneBody(message.signed.Body) }
+func (message VerifiedMessage) Body() BSVPriceBody { return cloneBody(message.signed.Body) }
 
 // Signature 返回唯一业务签名。
 func (message VerifiedMessage) Signature() encoding.Signature { return message.signed.Signature }
@@ -345,31 +320,31 @@ func validateTimes(issuedAtMs, expiresAtMs int64) error {
 	return nil
 }
 
-func normalizeBody(body Body) (Body, error) {
+func normalizeBody(body BSVPriceBody) (BSVPriceBody, error) {
 	if body.Protocol != Protocol {
-		return Body{}, protocolerror.New(protocolerror.UnsupportedProtocol, "BSV 价格 body protocol 不支持")
+		return BSVPriceBody{}, protocolerror.New(protocolerror.UnsupportedProtocol, "BSV 价格 body protocol 不支持")
 	}
 	if body.SnapshotAtMs < 0 || body.SnapshotAtMs > maxSafeInteger {
-		return Body{}, protocolerror.New(protocolerror.InvalidBody, "snapshot_at_ms 必须是非负 JSON safe integer")
+		return BSVPriceBody{}, protocolerror.New(protocolerror.InvalidBody, "snapshot_at_ms 必须是非负 JSON safe integer")
 	}
-	if len(body.Markets) == 0 || len(body.Markets) > maxMarkets {
-		return Body{}, protocolerror.New(protocolerror.InvalidBody, "markets 必须包含 1 至 100 个市场")
+	if len(body.Markets) > maxMarkets {
+		return BSVPriceBody{}, protocolerror.New(protocolerror.InvalidBody, "markets 必须包含 0 至 100 个市场")
 	}
-	result := Body{Protocol: Protocol, SnapshotAtMs: body.SnapshotAtMs, Markets: make(map[string]map[string]string, len(body.Markets))}
+	result := BSVPriceBody{Protocol: Protocol, SnapshotAtMs: body.SnapshotAtMs, Markets: make(map[string]map[string]string, len(body.Markets))}
 	for market, sourceQuotes := range body.Markets {
 		if err := validateIdentifier(market, "市场"); err != nil {
-			return Body{}, err
+			return BSVPriceBody{}, err
 		}
 		if len(sourceQuotes) == 0 || len(sourceQuotes) > maxPairsPerMarket {
-			return Body{}, protocolerror.New(protocolerror.InvalidBody, "每个市场必须包含 1 至 100 个交易对")
+			return BSVPriceBody{}, protocolerror.New(protocolerror.InvalidBody, "每个市场必须包含 1 至 100 个交易对")
 		}
 		quotes := make(map[string]string, len(sourceQuotes))
 		for pair, price := range sourceQuotes {
 			if err := validateIdentifier(pair, "交易对"); err != nil {
-				return Body{}, err
+				return BSVPriceBody{}, err
 			}
 			if err := validatePrice(price); err != nil {
-				return Body{}, err
+				return BSVPriceBody{}, err
 			}
 			quotes[pair] = price
 		}
@@ -383,11 +358,11 @@ func validateIdentifier(value, label string) error {
 		return protocolerror.New(protocolerror.InvalidBody, fmt.Sprintf("%s编号不合法", label))
 	}
 	for index, character := range value {
-		if character >= 'a' && character <= 'z' || character >= '0' && character <= '9' || character == '.' || character == '-' || character == '_' {
-			continue
-		}
-		if index == 0 {
+		if index == 0 && !((character >= 'a' && character <= 'z') || (character >= '0' && character <= '9')) {
 			return protocolerror.New(protocolerror.InvalidBody, fmt.Sprintf("%s编号必须以小写字母或数字开头", label))
+		}
+		if (character >= 'a' && character <= 'z') || (character >= '0' && character <= '9') || character == '.' || character == '-' || character == '_' {
+			continue
 		}
 		return protocolerror.New(protocolerror.InvalidBody, fmt.Sprintf("%s编号只能使用小写字母、数字、点、短横线和下划线", label))
 	}
@@ -427,7 +402,7 @@ func validatePrice(price string) error {
 	return nil
 }
 
-func bodyValue(body Body) map[string]any {
+func bodyValue(body BSVPriceBody) map[string]any {
 	markets := make(map[string]any, len(body.Markets))
 	for market, quotes := range body.Markets {
 		values := make(map[string]any, len(quotes))
@@ -439,8 +414,8 @@ func bodyValue(body Body) map[string]any {
 	return map[string]any{"protocol": Protocol, "snapshot_at_ms": body.SnapshotAtMs, "markets": markets}
 }
 
-func cloneBody(body Body) Body {
-	result := Body{Protocol: body.Protocol, SnapshotAtMs: body.SnapshotAtMs, Markets: make(map[string]map[string]string, len(body.Markets))}
+func cloneBody(body BSVPriceBody) BSVPriceBody {
+	result := BSVPriceBody{Protocol: body.Protocol, SnapshotAtMs: body.SnapshotAtMs, Markets: make(map[string]map[string]string, len(body.Markets))}
 	for market, quotes := range body.Markets {
 		result.Markets[market] = make(map[string]string, len(quotes))
 		for pair, price := range quotes {

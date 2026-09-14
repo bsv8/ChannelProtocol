@@ -1,6 +1,6 @@
 # BSV8 Channel Protocol SDK
 
-当前发布项目包/API 版本：`0.4.0`。协议标识仍保持 `bsv8.*.v1`。
+当前发布项目包/API 版本：`0.5.0`。协议标识仍保持 `bsv8.*.v1`。
 
 ChannelProtocol（CP）是独立于 libp2p/SSP 的内容协议：
 
@@ -40,8 +40,8 @@ npm package: bsv8-channel-protocol
 ```
 
 ```text
-go get github.com/bsv8/ChannelProtocol@v0.4.0
-npm install bsv8-channel-protocol@0.4.0
+go get github.com/bsv8/ChannelProtocol@v0.5.0
+npm install bsv8-channel-protocol@0.5.0
 ```
 
 CP Go module 和 TypeScript package 均不得依赖 SSP package。
@@ -136,5 +136,5 @@ cd typescript && npm ci && npm test && npm pack --dry-run
 cd .. && ./scripts/test-integration.sh
 ```
 
-`0.4.0` 已包含 BSV 价格频道协议、Go/TypeScript SDK 及对应测试；Go 使用 `v0.4.0`
-tag，TypeScript 使用 npm `0.4.0` 包。
+`0.5.0` 已包含 BSV 价格频道协议、空快照语义、Go/TypeScript SDK 及对应测试；Go 使用 `v0.5.0`
+tag，TypeScript 使用 npm `0.5.0` 包。

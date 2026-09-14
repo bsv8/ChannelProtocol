@@ -25,5 +25,5 @@ docs/v1/
 └── 协议族-消融实验.md
 ```
 
-协议标识和字段版本保持 V1；当前发布项目包/API 版本为 `0.4.0`。CP 不实现 HTTP、WebSocket、
+协议标识和字段版本保持 V1；当前发布项目包/API 版本为 `0.5.0`。CP 不实现 HTTP、WebSocket、
 libp2p、SSP、WebRTC Peer、付款账本或持久化去重表。

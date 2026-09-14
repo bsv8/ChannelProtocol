@@ -101,7 +101,7 @@ func TestChannelAndBodyValidation(t *testing.T) {
 			t.Fatalf("expected invalid channel: %q", invalid)
 		}
 	}
-	for _, body := range []bsvprice.Body{
+	for _, body := range []bsvprice.BSVPriceBody{
 		{Protocol: "old", SnapshotAtMs: 1, Markets: map[string]map[string]string{"gate": {"bsvusdt": "1"}}},
 		{Protocol: bsvprice.Protocol, SnapshotAtMs: 1, Markets: map[string]map[string]string{"Gate": {"bsvusdt": "1"}}},
 		{Protocol: bsvprice.Protocol, SnapshotAtMs: 1, Markets: map[string]map[string]string{"gate": {"bsvusdt": "1e-3"}}},
@@ -116,6 +116,49 @@ func TestChannelAndBodyValidation(t *testing.T) {
 		"markets":        map[string]any{"gate": map[string]any{"bsvusdt": 1.0}},
 	}); err == nil {
 		t.Fatal("expected numeric price to be rejected")
+	}
+}
+
+func TestIdentifierRejectsPunctuationAsFirstCharacter(t *testing.T) {
+	for _, invalid := range []string{".gate", "-gate", "_gate"} {
+		marketBody := bsvprice.BSVPriceBody{
+			Protocol:     bsvprice.Protocol,
+			SnapshotAtMs: 1,
+			Markets:      map[string]map[string]string{invalid: {"bsvusdt": "1"}},
+		}
+		if err := bsvprice.ValidateBody(marketBody); err == nil {
+			t.Fatalf("expected invalid market identifier: %q", invalid)
+		}
+
+		pairBody := bsvprice.BSVPriceBody{
+			Protocol:     bsvprice.Protocol,
+			SnapshotAtMs: 1,
+			Markets:      map[string]map[string]string{"gate": {invalid: "1"}},
+		}
+		if err := bsvprice.ValidateBody(pairBody); err == nil {
+			t.Fatalf("expected invalid pair identifier: %q", invalid)
+		}
+	}
+}
+
+func TestEmptyMarketsBodyIsValid(t *testing.T) {
+	body, err := bsvprice.NewBody(1, map[string]map[string]string{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if body.Markets == nil || len(body.Markets) != 0 {
+		t.Fatalf("expected canonical empty markets map, got %#v", body.Markets)
+	}
+	parsed, err := bsvprice.ParseBody(map[string]any{
+		"protocol":       bsvprice.Protocol,
+		"snapshot_at_ms": json.Number("1"),
+		"markets":        map[string]any{},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if parsed.Markets == nil || len(parsed.Markets) != 0 {
+		t.Fatalf("expected parsed empty markets map, got %#v", parsed.Markets)
 	}
 }
 
