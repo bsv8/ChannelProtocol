@@ -1,6 +1,6 @@
 # BSV8 Channel Protocol SDK
 
-待发布项目包/API 版本：`0.3.0`。协议标识仍保持 `bsv8.*.v1`。
+当前发布项目包/API 版本：`0.4.0`。协议标识仍保持 `bsv8.*.v1`。
 
 ChannelProtocol（CP）是独立于 libp2p/SSP 的内容协议：
 
@@ -23,6 +23,7 @@ ChannelProtocol（CP）是独立于 libp2p/SSP 的内容协议：
 | 线上标识 | Go package | TypeScript export | 职责 |
 |---|---|---|---|
 | `bsv8.public-message.v1` | `publicmessage` | `./public-message` | 任意精确公开频道的通用签名 JSON 原语 |
+| `bsv8.bsv-price.v1` | `bsvprice` | `./bsv-price` | `bsvprice.<public_key_hex>` 上的多市场、多交易对完整价格快照 |
 | `bsv8.hash.request.v1` | `hashrequest` | `./hash-request` | 固定频道的强类型签名 Hash 请求 |
 | `bsv8.inbox.<public_key_hex>` | `inbox` | `./inbox` | 自包含发送者公钥的端到端加密信封 |
 | `bsv8.webrtc.signal.v1` | `webrtcsignal` | `./webrtc-signal` | SDP/ICE body |
@@ -39,8 +40,8 @@ npm package: bsv8-channel-protocol
 ```
 
 ```text
-go get github.com/bsv8/ChannelProtocol@v0.3.0
-npm install bsv8-channel-protocol@0.3.0
+go get github.com/bsv8/ChannelProtocol@v0.4.0
+npm install bsv8-channel-protocol@0.4.0
 ```
 
 CP Go module 和 TypeScript package 均不得依赖 SSP package。
@@ -135,4 +136,5 @@ cd typescript && npm ci && npm test && npm pack --dry-run
 cd .. && ./scripts/test-integration.sh
 ```
 
-本施工单只准备 `0.3.0`，不执行 npm publish、Git tag 或 push。
+`0.4.0` 已包含 BSV 价格频道协议、Go/TypeScript SDK 及对应测试；Go 使用 `v0.4.0`
+tag，TypeScript 使用 npm `0.4.0` 包。

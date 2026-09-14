@@ -1,6 +1,6 @@
 # Channel Protocol V1
 
-待发布项目包/API 版本为 `0.3.0`；线上 channel、protocol 和 envelope 版本仍为 V1。
+当前发布项目包/API 版本为 `0.4.0`；线上 channel、protocol 和 envelope 版本仍为 V1。
 
 ## 1. 分层
 
@@ -132,4 +132,5 @@ Inbox 使用长期 secp256k1 ECDH、HKDF-SHA256 和 AES-256-GCM，不承诺前�
 - [应用消息与 ACK](./04-应用消息子协议.md)
 - [Ping/Pong](./05-Ping-Pong子协议.md)
 - [通用公开消息](./06-通用公开消息.md)
+- [BSV 价格频道](./07-BSV价格频道.md)
 - [跨仓库消融设计](../SSP-CP协议族消融设计.md)

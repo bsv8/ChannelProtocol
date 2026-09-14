@@ -93,6 +93,23 @@ func ParseInboxChannel(channel string) (PublicKey, error) {
 	return key, nil
 }
 
+// BSVPriceChannel 返回价格发布者对应的稳定公开价格频道。
+func BSVPriceChannel(publisherPublicKey PublicKey) string {
+	return protocol.BSVPriceChannelPrefix + publisherPublicKey.String()
+}
+
+// ParseBSVPriceChannel 严格解析 bsvprice.<public_key_hex> 并返回价格发布者公钥。
+func ParseBSVPriceChannel(channel string) (PublicKey, error) {
+	if len(channel) <= len(protocol.BSVPriceChannelPrefix) || channel[:len(protocol.BSVPriceChannelPrefix)] != protocol.BSVPriceChannelPrefix {
+		return PublicKey{}, protocolerror.New(protocolerror.InvalidChannel, "BSV 价格频道前缀不合法")
+	}
+	key, err := encoding.ParsePublicKey(channel[len(protocol.BSVPriceChannelPrefix):])
+	if err != nil {
+		return PublicKey{}, protocolerror.New(protocolerror.InvalidChannel, "BSV 价格频道发布者公钥不合法")
+	}
+	return key, nil
+}
+
 // CanonicalizeJSON 输出 RFC 8785 JCS UTF-8 字节。
 func CanonicalizeJSON(input []byte) ([]byte, error) {
 	return canonicalizeJSON(input)

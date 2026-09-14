@@ -44,6 +44,14 @@ export type {
   VerifiedPublicMessage,
   DeduplicationKey as PublicMessageDeduplicationKey,
 } from "./public-message/index.js";
+export { bsvPriceChannel, parseBSVPriceChannel } from "./bsv-price/index.js";
+export type {
+  BSVPriceBody,
+  UnsignedBSVPriceMessage,
+  SignedBSVPriceMessage,
+  VerifiedBSVPriceMessage,
+  DeduplicationKey as BSVPriceDeduplicationKey,
+} from "./bsv-price/index.js";
 // 私密收件箱的有效期上限；业务层应复用这些协议常量，避免自行复制 TTL。
 export {
   PRIVATE_MESSAGE_DEFAULT_MAX_LIFETIME_MS,

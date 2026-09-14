@@ -3,6 +3,8 @@ import test from "node:test";
 
 import {
   APP_MESSAGE_PROTOCOL,
+  BSV_PRICE_CHANNEL_PREFIX,
+  BSV_PRICE_PROTOCOL,
   HASH_REQUEST_CHANNEL,
   INBOX_CHANNEL_PREFIX,
   INBOX_ENVELOPE_VERSION,
@@ -17,4 +19,6 @@ test("协议常量与 V1 文档一致", () => {
   assert.equal(WEBRTC_SIGNAL_PROTOCOL, "bsv8.webrtc.signal.v1");
   assert.equal(APP_MESSAGE_PROTOCOL, "bsv8.message.v1");
   assert.equal(PING_PROTOCOL, "bsv8.ping.v1");
+  assert.equal(BSV_PRICE_PROTOCOL, "bsv8.bsv-price.v1");
+  assert.equal(BSV_PRICE_CHANNEL_PREFIX, "bsvprice.");
 });

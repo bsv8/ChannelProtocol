@@ -11,6 +11,14 @@
       "typescript_export": "./public-message"
     },
     {
+      "document": "docs/v1/07-BSV价格频道.md",
+      "kind": "public_channel",
+      "identifier": "bsvprice.<public_key_hex>",
+      "description_zh": "指定可信发布者的 BSV 多市场、多交易对完整价格快照",
+      "go_package": "bsvprice",
+      "typescript_export": "./bsv-price"
+    },
+    {
       "document": "docs/v1/01-Hash请求频道.md",
       "kind": "public_channel",
       "identifier": "bsv8.hash.request.v1",

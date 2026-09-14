@@ -1,6 +1,6 @@
 # `bsv8-channel-protocol`
 
-Channel Protocol V1 的 TypeScript SDK，待发布项目包版本为 `0.3.0`。
+Channel Protocol V1 的 TypeScript SDK，当前发布项目包版本为 `0.4.0`。
 
 目标边界：
 
@@ -14,6 +14,7 @@ Channel Protocol V1 的 TypeScript SDK，待发布项目包版本为 `0.3.0`。
 | 导入路径 | 职责 |
 |---|---|
 | `bsv8-channel-protocol/public-message` | 任意精确公开频道的通用签名 JSON 消息 |
+| `bsv8-channel-protocol/bsv-price` | `bsvprice.<public_key_hex>` 上的 BSV 多市场价格快照 |
 | `bsv8-channel-protocol/hash-request` | 自包含签名 Hash 消息 |
 | `bsv8-channel-protocol/inbox` | 带唯一发送者公钥的信封、私密签名消息和加解密 |
 | `bsv8-channel-protocol/webrtc-signal` | WebRTC SDP/ICE body |

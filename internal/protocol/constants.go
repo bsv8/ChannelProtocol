@@ -14,6 +14,10 @@ const (
 	PingProtocol = "bsv8.ping.v1"
 	// PublicMessageScope 是公开消息签名作用域。
 	PublicMessageScope = "bsv8.public-message.v1"
+	// BSVPriceProtocol 是 BSV 多市场、多交易对价格快照的业务协议标识。
+	BSVPriceProtocol = "bsv8.bsv-price.v1"
+	// BSVPriceChannelPrefix 是价格频道前缀，后接发布者压缩公钥小写 hex。
+	BSVPriceChannelPrefix = "bsvprice."
 	// PrivateMessageScope 是私密消息签名作用域。
 	PrivateMessageScope = "bsv8.private-message.v1"
 	// InboxEnvelopeVersion 是私密信封版本。

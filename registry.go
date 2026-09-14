@@ -20,6 +20,10 @@ const (
 	InboxEnvelopeVersion = protocol.InboxEnvelopeVersion
 	// PublicMessageScope 是公开消息签名作用域。
 	PublicMessageScope = protocol.PublicMessageScope
+	// BSVPriceProtocol 是 BSV 多市场价格快照的业务协议标识。
+	BSVPriceProtocol = protocol.BSVPriceProtocol
+	// BSVPriceChannelPrefix 是价格频道前缀，后接发布者公钥小写 hex。
+	BSVPriceChannelPrefix = protocol.BSVPriceChannelPrefix
 	// PrivateMessageScope 是私密消息签名作用域。
 	PrivateMessageScope = protocol.PrivateMessageScope
 )
