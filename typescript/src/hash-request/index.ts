@@ -26,7 +26,7 @@ import { cloneAndFreeze, freezeDeep } from "../internal/immutable.js";
 
 export { HASH_REQUEST_CHANNEL };
 
-const MAX_FUTURE_SKEW_MS = 60 * 1000;
+
 
 const verifiedHashRequests = new WeakSet<object>();
 
@@ -123,17 +123,19 @@ export function marshal(message: SignedHashRequest): Uint8Array {
   return new Uint8Array(result);
 }
 
-/** 严格解析并验签公开消息，输入字段顺序可以不同。 */
-export function parseAndVerify(channel: string, input: string | Uint8Array, nowMs: number): VerifiedHashRequest {
+/**
+ * 严格解析并验签公开消息，输入字段顺序可以不同。
+ *
+ * 与通用公开消息一致：只校验结构时间（合法整数、issued < expires、
+ * 有效期不超过协议上限）和签名，不使用本地时钟判断过期或未来偏差。
+ */
+export function parseAndVerify(channel: string, input: string | Uint8Array): VerifiedHashRequest {
   if (channel !== HASH_REQUEST_CHANNEL) throw protocolError(ERROR_CODES.INVALID_CHANNEL, "公开 Hash 请求 channel 不合法");
-  const now = parseUnixMillis(nowMs, "now_ms");
   const value = parseStrictJSON(input);
   if (!isJSONObject(value)) throw protocolError(ERROR_CODES.INVALID_JSON, "公开消息根值必须是 object");
   requireObjectKeys(value, ["from_public_key", "message_id", "issued_at_ms", "expires_at_ms", "body", "signature"]);
   const message = parseMessage(value);
   validateUnsigned(message, true);
-  if (message.issued_at_ms > now && message.issued_at_ms - now > MAX_FUTURE_SKEW_MS) throw protocolError(ERROR_CODES.INVALID_TIME, "公开消息发布时间超出允许的未来时钟偏差");
-  if (now >= message.expires_at_ms) throw protocolError(ERROR_CODES.MESSAGE_EXPIRED, "公开消息已过期");
   const digest = signingDigest(message);
   verifyDigest(message.from_public_key, digest, message.signature);
   return verifiedHashRequest({ ...message, digest: sha256HashFromBytes(digest) });

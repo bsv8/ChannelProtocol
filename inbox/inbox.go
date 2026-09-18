@@ -26,8 +26,7 @@ const (
 	// NonceBytes 是 AES-GCM nonce 的长度。
 	NonceBytes = 12
 	// GCMTagBytes 是 AES-GCM tag 的固定长度。
-	GCMTagBytes               = 16
-	privateFutureSkewMs int64 = 60 * 1000
+	GCMTagBytes = 16
 )
 
 // PrivateMessageMaxLifetimeMs 返回指定私密子协议允许的最大有效期。
@@ -434,17 +433,14 @@ func SignAndSeal(message UnsignedPrivateMessage, privateKey encoding.PrivateKey,
 // 该函数不执行解密，也不替代 Open；远端收到的加密信封仍必须通过 Open。
 // 它适用于发送方保留自己刚生成的 Ping、WebRTC offer 或其他私密消息时，
 // 让本地值与 Open 返回值共享同一关系校验边界。
-func VerifySignedPrivateMessage(message SignedPrivateMessage, nowMs int64) (VerifiedPrivateMessage, error) {
-	if err := validateNow(nowMs); err != nil {
-		return VerifiedPrivateMessage{}, err
-	}
+func VerifySignedPrivateMessage(message SignedPrivateMessage) (VerifiedPrivateMessage, error) {
 	if err := validateUnsigned(message.UnsignedPrivateMessage); err != nil {
 		return VerifiedPrivateMessage{}, err
 	}
 	if err := validateSignedMessage(message); err != nil {
 		return VerifiedPrivateMessage{}, err
 	}
-	if err := validatePrivateTimes(message.IssuedAtMs, message.ExpiresAtMs, nowMs, message.Protocol, true); err != nil {
+	if err := validatePrivateTimes(message.IssuedAtMs, message.ExpiresAtMs, message.Protocol); err != nil {
 		return VerifiedPrivateMessage{}, err
 	}
 	recipient, err := parseInboxChannel(message.Channel)
@@ -478,12 +474,13 @@ func VerifySignedPrivateMessage(message SignedPrivateMessage, nowMs int64) (Veri
 	}, nil
 }
 
-// Open 解密、严格解析、检查时间并验证私密消息唯一签名。
+// Open 解密、严格解析并验证私密消息唯一签名。
+//
+// 它与本地时钟无关：不做过期或未来时钟判断，只校验结构时间
+// （合法整数、issued < expires、有效期不超过子协议上限）和签名。
+// 消息是否过期、是否接受迟到消息由调用方决定。
 // 解密后的格式、AES tag、明文 JSON 和私密验签失败统一返回 OPEN_FAILED。
-func Open(channel string, envelopeJSON []byte, recipientPrivateKey encoding.PrivateKey, nowMs int64) (VerifiedPrivateMessage, error) {
-	if err := validateNow(nowMs); err != nil {
-		return VerifiedPrivateMessage{}, err
-	}
+func Open(channel string, envelopeJSON []byte, recipientPrivateKey encoding.PrivateKey) (VerifiedPrivateMessage, error) {
 	envelope, err := ParseEnvelope(channel, envelopeJSON)
 	if err != nil {
 		return VerifiedPrivateMessage{}, err
@@ -540,7 +537,7 @@ func Open(channel string, envelopeJSON []byte, recipientPrivateKey encoding.Priv
 	if err != nil {
 		return VerifiedPrivateMessage{}, protocolerror.New(protocolerror.OpenFailed, "私密信封无法打开")
 	}
-	if err := validatePrivateTimes(parsed.IssuedAtMs, parsed.ExpiresAtMs, nowMs, parsed.Protocol, true); err != nil {
+	if err := validatePrivateTimes(parsed.IssuedAtMs, parsed.ExpiresAtMs, parsed.Protocol); err != nil {
 		return VerifiedPrivateMessage{}, mapOpenError(err)
 	}
 	digest, err := signingDigestRaw(parsed, channel, envelope.FromPublicKey)
@@ -710,16 +707,12 @@ func CheckDigestConflict(existing, incoming encoding.SHA256Hash) error {
 }
 
 // ReviewOfferForHashRequest 统一审查 WebRTC offer 与已验证 Hash 请求的跨协议关系。
-// 调用方仍负责 session_id 是否已使用以及会话状态的保存。
-func ReviewOfferForHashRequest(hashRequest hashrequest.VerifiedMessage, offer VerifiedPrivateMessage, nowMs int64) (webrtcsignal.SessionKey, error) {
+//
+// Hash 请求是否"过期"由调用方按自己的时钟与业务判断；这里只校验两边的
+// 协议关系和签名结果。调用方仍负责 session_id 是否已使用以及会话状态的保存。
+func ReviewOfferForHashRequest(hashRequest hashrequest.VerifiedMessage, offer VerifiedPrivateMessage) (webrtcsignal.SessionKey, error) {
 	if !hashRequest.IsVerified() || !offer.IsVerified() {
 		return webrtcsignal.SessionKey{}, protocolerror.New(protocolerror.InvalidSignature, "Hash 请求或 offer 不是 SDK 生成的已验证结果")
-	}
-	if nowMs < 0 || nowMs > 9_007_199_254_740_991 {
-		return webrtcsignal.SessionKey{}, protocolerror.New(protocolerror.InvalidTime, "now_ms 超出 safe integer")
-	}
-	if nowMs >= hashRequest.ExpiresAtMs() {
-		return webrtcsignal.SessionKey{}, protocolerror.New(protocolerror.MessageExpired, "引用的 Hash 请求已过期")
 	}
 	hashBody := hashRequest.Body()
 	hasWebRTCLocator := false
@@ -864,7 +857,7 @@ func validateUnsigned(message UnsignedPrivateMessage) error {
 	default:
 		return protocolerror.New(protocolerror.InvalidBody, "私密消息 body 不是已注册强类型")
 	}
-	if err := validatePrivateTimes(message.IssuedAtMs, message.ExpiresAtMs, 0, message.Protocol, false); err != nil {
+	if err := validatePrivateTimes(message.IssuedAtMs, message.ExpiresAtMs, message.Protocol); err != nil {
 		return err
 	}
 	return nil
@@ -1000,7 +993,7 @@ func signingDigestRaw(message parsedPrivateMessage, channel string, from encodin
 	return sha256.Sum256(canonical), nil
 }
 
-func validatePrivateTimes(issued, expires, now int64, protocolName string, checkCurrent bool) error {
+func validatePrivateTimes(issued, expires int64, protocolName string) error {
 	if issued < 0 || expires < 0 || issued > 9_007_199_254_740_991 || expires > 9_007_199_254_740_991 {
 		return protocolerror.New(protocolerror.InvalidTime, "私密消息时间超出 safe integer")
 	}
@@ -1010,12 +1003,6 @@ func validatePrivateTimes(issued, expires, now int64, protocolName string, check
 	maxLifetime := PrivateMessageMaxLifetimeMs(protocolName)
 	if expires-issued > maxLifetime {
 		return protocolerror.New(protocolerror.InvalidTime, "私密消息有效期超过子协议上限")
-	}
-	if checkCurrent && issued > now && issued-now > privateFutureSkewMs {
-		return protocolerror.New(protocolerror.InvalidTime, "私密消息发布时间超出本地时钟容差")
-	}
-	if checkCurrent && now >= expires {
-		return protocolerror.New(protocolerror.MessageExpired, "私密消息已过期")
 	}
 	return nil
 }
@@ -1051,13 +1038,6 @@ func requiredString(object map[string]strictjson.JSONValue, field string) (strin
 func validatePrivateKey(privateKey encoding.PrivateKey) error {
 	if _, err := encoding.NewPrivateKey(privateKey.Bytes()); err != nil {
 		return err
-	}
-	return nil
-}
-
-func validateNow(nowMs int64) error {
-	if nowMs < 0 || nowMs > 9_007_199_254_740_991 {
-		return protocolerror.New(protocolerror.InvalidTime, "now_ms 超出 safe integer")
 	}
 	return nil
 }

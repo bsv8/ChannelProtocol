@@ -38,7 +38,7 @@ func TestVerifiedSnapshotsCannotBeMutated(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	verifiedPublic, err := hashrequest.ParseAndVerify(channels.HashRequestChannel, publicJSON, 1500)
+	verifiedPublic, err := hashrequest.ParseAndVerify(channels.HashRequestChannel, publicJSON)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -71,7 +71,7 @@ func TestVerifiedSnapshotsCannotBeMutated(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	opened, err := inbox.Open(envelope.Channel, envelopeJSON, privateB, 1500)
+	opened, err := inbox.Open(envelope.Channel, envelopeJSON, privateB)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -142,7 +142,7 @@ func TestReviewOfferForHashRequest(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	verifiedRequest, err := hashrequest.ParseAndVerify(channels.HashRequestChannel, requestJSON, 1500)
+	verifiedRequest, err := hashrequest.ParseAndVerify(channels.HashRequestChannel, requestJSON)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -166,11 +166,11 @@ func TestReviewOfferForHashRequest(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	verifiedOffer, err := inbox.Open(offerEnvelope.Channel, offerJSON, privateB, 1500)
+	verifiedOffer, err := inbox.Open(offerEnvelope.Channel, offerJSON, privateB)
 	if err != nil {
 		t.Fatal(err)
 	}
-	key, err := inbox.ReviewOfferForHashRequest(verifiedRequest, verifiedOffer, 1500)
+	key, err := inbox.ReviewOfferForHashRequest(verifiedRequest, verifiedOffer)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -196,14 +196,15 @@ func TestReviewOfferForHashRequest(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	verifiedNoWebRTC, err := hashrequest.ParseAndVerify(channels.HashRequestChannel, noWebRTCJSON, 1500)
+	verifiedNoWebRTC, err := hashrequest.ParseAndVerify(channels.HashRequestChannel, noWebRTCJSON)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := inbox.ReviewOfferForHashRequest(verifiedNoWebRTC, verifiedOffer, 1500); !errors.Is(err, channels.ErrInvalidRelation) {
+	if _, err := inbox.ReviewOfferForHashRequest(verifiedNoWebRTC, verifiedOffer); !errors.Is(err, channels.ErrInvalidRelation) {
 		t.Fatalf("缺少 webrtc-sdp locator 未被拒绝: %v", err)
 	}
-	if _, err := inbox.ReviewOfferForHashRequest(verifiedRequest, verifiedOffer, 2000); !errors.Is(err, channels.ErrMessageExpired) {
-		t.Fatalf("过期 Hash 请求未被拒绝: %v", err)
+	// Hash 请求是否过期由调用方决定；SDK 只校验跨协议关系。
+	if _, err := inbox.ReviewOfferForHashRequest(verifiedRequest, verifiedOffer); err != nil {
+		t.Fatalf("结构合法的过期 Hash 请求关系不应被 SDK 拒绝: %v", err)
 	}
 }

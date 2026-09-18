@@ -64,7 +64,7 @@ func TestSignMarshalParseAndVerify(t *testing.T) {
 	if got := signed.SignedDigest().String(); got != "fc19ee6bfbc7c15720da52bacca8cea912c4a2e34b2484755b9f29c7ee844104" {
 		t.Fatalf("cross-language digest mismatch: %s", got)
 	}
-	verified, err := bsvprice.ParseAndVerify(bsvprice.Channel(publicKey), wire, 1500)
+	verified, err := bsvprice.ParseAndVerify(bsvprice.Channel(publicKey), wire)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -184,7 +184,7 @@ func TestChannelAuthorMismatch(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := bsvprice.ParseAndVerify(bsvprice.Channel(other), wire, 1500); !errors.Is(err, channels.ErrIdentityMismatch) {
+	if _, err := bsvprice.ParseAndVerify(bsvprice.Channel(other), wire); !errors.Is(err, channels.ErrIdentityMismatch) {
 		t.Fatalf("expected identity mismatch, got %v", err)
 	}
 }

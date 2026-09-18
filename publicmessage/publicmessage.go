@@ -18,7 +18,6 @@ import (
 
 const (
 	maxLifetimeMs   int64 = 10 * 60 * 1000
-	maxFutureSkewMs int64 = 60 * 1000
 	maxChannelBytes       = 256
 	maxSafeInteger  int64 = 9_007_199_254_740_991
 )
@@ -69,9 +68,6 @@ type DeduplicationKey struct {
 
 // MaxLifetimeMs 返回通用公开消息允许的最大有效期。
 func MaxLifetimeMs() int64 { return maxLifetimeMs }
-
-// MaxFutureSkewMs 返回通用公开消息允许的最大未来时钟偏差。
-func MaxFutureSkewMs() int64 { return maxFutureSkewMs }
 
 // ValidateChannel 校验非空、非 wildcard 且不超过 SSP channel 长度上限的频道。
 func ValidateChannel(channel string) error {
@@ -147,11 +143,12 @@ func Marshal(message SignedMessage) ([]byte, error) {
 }
 
 // ParseAndVerify 严格解析指定 channel 上的公开消息并验签。
-func ParseAndVerify(channel string, input []byte, nowMs int64) (VerifiedMessage, error) {
+//
+// 它只校验与本地时钟无关的结构事实（时间字段合法、issued < expires、
+// 有效期不超过协议上限）和签名；消息是否"过期"、是否接受迟到消息由调用方
+// 依据自己的时钟与业务边界决定。
+func ParseAndVerify(channel string, input []byte) (VerifiedMessage, error) {
 	if err := ValidateChannel(channel); err != nil {
-		return VerifiedMessage{}, err
-	}
-	if err := validateNow(nowMs); err != nil {
 		return VerifiedMessage{}, err
 	}
 	object, err := strictjson.ParseObject(input)
@@ -167,12 +164,6 @@ func ParseAndVerify(channel string, input []byte, nowMs int64) (VerifiedMessage,
 	}
 	if err := validateUnsigned(message.UnsignedMessage); err != nil {
 		return VerifiedMessage{}, err
-	}
-	if message.IssuedAtMs > nowMs && message.IssuedAtMs-nowMs > maxFutureSkewMs {
-		return VerifiedMessage{}, protocolerror.New(protocolerror.InvalidTime, "公开消息发布时间超出允许的未来时钟偏差")
-	}
-	if nowMs >= message.ExpiresAtMs {
-		return VerifiedMessage{}, protocolerror.New(protocolerror.MessageExpired, "公开消息已过期")
 	}
 	digest, err := signingDigest(message.UnsignedMessage)
 	if err != nil {
@@ -441,13 +432,6 @@ func requiredString(object map[string]strictjson.JSONValue, field string) (strin
 		return "", protocolerror.New(protocolerror.InvalidBody, fmt.Sprintf("%s 必须是 string", field))
 	}
 	return result, nil
-}
-
-func validateNow(nowMs int64) error {
-	if nowMs < 0 || nowMs > maxSafeInteger {
-		return protocolerror.New(protocolerror.InvalidTime, "now_ms 超出 safe integer")
-	}
-	return nil
 }
 
 func validatePrivateKey(privateKey encoding.PrivateKey) error {

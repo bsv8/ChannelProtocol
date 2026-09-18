@@ -161,7 +161,7 @@ func buildDedupRelations(input fixture) (dedupRelationsResult, error) {
 	if err != nil {
 		return dedupRelationsResult{}, err
 	}
-	verifiedPublic, err := hashrequest.ParseAndVerify(fixtureValue.PublicHashRequest.Channel, publicJSON, fixtureValue.PublicHashRequest.IssuedAtMs+500)
+	verifiedPublic, err := hashrequest.ParseAndVerify(fixtureValue.PublicHashRequest.Channel, publicJSON)
 	if err != nil {
 		return dedupRelationsResult{}, err
 	}
@@ -207,7 +207,7 @@ func buildDedupRelations(input fixture) (dedupRelationsResult, error) {
 	if err != nil {
 		return dedupRelationsResult{}, err
 	}
-	opened, err := inbox.Open(fixtureValue.PrivateDeliver.Channel, envelopeJSON, privateB, fixtureValue.PrivateDeliver.IssuedAtMs+500)
+	opened, err := inbox.Open(fixtureValue.PrivateDeliver.Channel, envelopeJSON, privateB)
 	if err != nil {
 		return dedupRelationsResult{}, err
 	}
@@ -383,7 +383,7 @@ func validateDedupAckCase(delivery inbox.VerifiedPrivateMessage, value dedupAckC
 	if err != nil {
 		return err
 	}
-	ackMessage, err := inbox.Open(envelope.Channel, envelopeJSON, recipientPrivate, delivery.IssuedAtMs()+500)
+	ackMessage, err := inbox.Open(envelope.Channel, envelopeJSON, recipientPrivate)
 	if err != nil {
 		return err
 	}

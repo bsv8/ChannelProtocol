@@ -1,6 +1,6 @@
 # `bsv8-channel-protocol`
 
-Channel Protocol V1 的 TypeScript SDK，当前发布项目包版本为 `0.5.0`。
+Channel Protocol V1 的 TypeScript SDK，当前发布项目包版本为 `0.6.0`。
 
 目标边界：
 
@@ -37,7 +37,7 @@ const message = sign({
   expires_at_ms: 2_000,
   body: { kind: "local-demo", value: 1 },
 }, privateKey);
-const verified = parseAndVerify(message.channel, marshal(message), 1_500);
+const verified = parseAndVerify(message.channel, marshal(message));
 console.log(dedupKey(verified));
 ```
 
@@ -45,9 +45,9 @@ Inbox 信封包含 `envelope_version/from_public_key/kdf_salt/nonce/ciphertext`�
 PrivateMessage 包含 `protocol/message_id/issued_at_ms/expires_at_ms/body/signature`。
 发送者公钥只在完整信封出现一次。
 
-发送方已经生成的本地明文只能使用 `verifySignedPrivateMessage(message, nowMs)` 验证；
+发送方已经生成的本地明文只能使用 `verifySignedPrivateMessage(message)` 验证；
 它不会解密远端数据。远端 Inbox 信封仍必须调用 `open`，去重键也必须使用包含 channel
-的已验证结果。
+的已验证结果。SDK 只校验结构时间和签名，是否过期由调用方判断。
 
 ```sh
 npm ci

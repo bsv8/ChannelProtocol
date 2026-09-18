@@ -83,7 +83,7 @@ async function sharedInvalidResults() {
   }
 
   const hashInvalid = readTestFixture("hash-request-invalid.json");
-  for (const item of hashInvalid.cases) append("hash-request-invalid", item, expectCode(() => hashrequest.parseAndVerify(item.channel, item.json, item.now_ms), item.expected_code));
+  for (const item of hashInvalid.cases) append("hash-request-invalid", item, expectCode(() => hashrequest.parseAndVerify(item.channel, item.json), item.expected_code));
 
   const appInvalid = readTestFixture("app-message-invalid.json");
   for (const item of appInvalid.cases) append("app-message-invalid", item, expectCode(() => appmessage.parseBody(item.json), item.expected_code));
@@ -101,8 +101,8 @@ async function sharedInvalidResults() {
       const answer = webrtc.parseBody(item.json);
       const offerEnvelope = await inbox.signAndSeal({ channel: channels.inboxChannel(publicB), from_public_key: publicA, protocol: channels.WEBRTC_SIGNAL_PROTOCOL, message_id: channels.parseMessageID(fixture.message_id), issued_at_ms: 1000, expires_at_ms: 2000, body: validOffer }, privateA);
       const answerEnvelope = await inbox.signAndSeal({ channel: channels.inboxChannel(publicA), from_public_key: publicB, protocol: channels.WEBRTC_SIGNAL_PROTOCOL, message_id: channels.parseMessageID(fixture.message_id), issued_at_ms: 1000, expires_at_ms: 2000, body: answer }, privateB);
-      const offerMessage = await inbox.open(offerEnvelope.channel, inbox.marshalEnvelope(offerEnvelope), privateB, 1500);
-      const answerMessage = await inbox.open(answerEnvelope.channel, inbox.marshalEnvelope(answerEnvelope), privateA, 1500);
+      const offerMessage = await inbox.open(offerEnvelope.channel, inbox.marshalEnvelope(offerEnvelope), privateB);
+      const answerMessage = await inbox.open(answerEnvelope.channel, inbox.marshalEnvelope(answerEnvelope), privateA);
       append("webrtc-signal-invalid", item, expectCode(() => inbox.validateWebRTCRelation(offerMessage, answerMessage), item.expected_code));
     } else {
       assert.fail(`unknown WebRTC fixture operation: ${item.operation}`);
@@ -116,7 +116,7 @@ async function sharedInvalidResults() {
       append("inbox-crypto-invalid", item, expectCode(() => inbox.parseEnvelope(item.channel, envelopeJSON), item.expected_code));
     } else if (item.operation === "open" || item.operation === "open_dispatch") {
       const privateKey = channels.parsePrivateKey(bytesFromHex(item.recipient_private_key_hex));
-      append("inbox-crypto-invalid", item, await expectCodeAsync(() => inbox.open(item.channel, envelopeJSON, privateKey, 1500), item.expected_code));
+      append("inbox-crypto-invalid", item, await expectCodeAsync(() => inbox.open(item.channel, envelopeJSON, privateKey), item.expected_code));
     } else {
       assert.fail(`unknown inbox fixture operation: ${item.operation}`);
     }
@@ -139,9 +139,9 @@ function validateSharedValidFixtures() {
   for (const item of hashValid.multiaddr_cases) assert.equal(hashrequest.newMultiaddrLocator(item.address).address, item.address, `multiaddr valid fixture ${item.name}`);
   for (const item of hashValid.time_boundary_cases) {
     if (item.expected === "ACCEPT") {
-      assert.doesNotThrow(() => hashrequest.parseAndVerify(item.channel, item.json, item.now_ms), item.name);
+      assert.doesNotThrow(() => hashrequest.parseAndVerify(item.channel, item.json), item.name);
     } else {
-      expectCode(() => hashrequest.parseAndVerify(item.channel, item.json, item.now_ms), item.expected);
+      expectCode(() => hashrequest.parseAndVerify(item.channel, item.json), item.expected);
     }
   }
 
@@ -183,7 +183,7 @@ async function buildDedupRelations() {
       }),
     },
   }, privateA);
-  const verifiedPublic = hashrequest.parseAndVerify(publicInput.channel, hashrequest.marshal(publicMessage), publicInput.issued_at_ms + 500);
+  const verifiedPublic = hashrequest.parseAndVerify(publicInput.channel, hashrequest.marshal(publicMessage));
   const publicKey = hashrequest.dedupKey(verifiedPublic);
   const publicDedupKey = [publicKey.from_public_key, publicKey.message_id];
 
@@ -206,7 +206,7 @@ async function buildDedupRelations() {
   const random = new Uint8Array(44);
   random.fill(0x32, 32);
   const envelope = await inbox.sealSigned(signedPrivate, privateA, channels.fixedRandom(random));
-  const opened = await inbox.open(privateInput.channel, inbox.marshalEnvelope(envelope), privateB, privateInput.issued_at_ms + 500);
+  const opened = await inbox.open(privateInput.channel, inbox.marshalEnvelope(envelope), privateB);
   const privateKey = inbox.dedupKey(opened);
   const privateDedupKey = [privateKey.protocol, privateKey.from_public_key, privateKey.message_id];
 
@@ -232,7 +232,7 @@ async function buildDedupRelations() {
       expires_at_ms: 2000,
       body: appmessage.newAck(channels.parseMessageID(item.acknowledged_message_id)),
     }, senderPrivate);
-    return inbox.open(envelope.channel, inbox.marshalEnvelope(envelope), recipientPrivate, 1500);
+    return inbox.open(envelope.channel, inbox.marshalEnvelope(envelope), recipientPrivate);
   };
   assert.equal(value.ack.valid.expected_code, null);
   const validAck = await ackMessage(value.ack.valid);
@@ -271,7 +271,7 @@ async function expectedInvalid() {
   const invalid = fixture.invalid_error_codes.map((item) => ({
     name: item.name,
     code: item.name === "unknown public field"
-      ? expectCode(() => hashrequest.parseAndVerify(channels.HASH_REQUEST_CHANNEL, item.json, fixture.issued_at_ms + 500), item.expected_code)
+      ? expectCode(() => hashrequest.parseAndVerify(channels.HASH_REQUEST_CHANNEL, item.json), item.expected_code)
       : expectCode(() => channels.canonicalizeJSON(item.json), item.expected_code),
   }));
   return invalid.concat(await sharedInvalidResults());
@@ -299,7 +299,6 @@ function publicMessageInvalidInput(item, baseJSON) {
     case "wrong_public_key_type": object.from_public_key = 1; break;
     case "issued_equals_expires": object.issued_at_ms = 2000; break;
     case "lifetime_over_max": object.expires_at_ms = 601001; break;
-    case "future_skew_over_max": object.issued_at_ms = 61001; object.expires_at_ms = 661001; break;
     case "wrong_public_key": object.from_public_key = fixture.public_key_b; break;
     case "wrong_signature": object.signature = "AAAA"; break;
     case "high_s_signature": object.signature = "MEYCIQCxjq-UdL-zqecurQmubV2d3utTgDMA2IDsiMy6u5hlNwIhAPnZHMoNmmiRZouM9yy6amfqHJmlDd9SDYcXXForlxYe"; break;
@@ -326,7 +325,7 @@ function buildPublicMessage() {
       body: item.body,
     }, privateKey);
     const json = textDecoder.decode(publicmessage.marshal(signed));
-    const verified = publicmessage.parseAndVerify(item.channel, json, item.now_ms);
+    const verified = publicmessage.parseAndVerify(item.channel, json);
     const key = publicmessage.dedupKey(verified);
     const actual = {
       name: item.name,
@@ -350,7 +349,7 @@ function buildPublicMessage() {
     } else {
       const channel = item.channel + (item.channel_repeat ? "a".repeat(item.channel_repeat) : "");
       const input = publicMessageInvalidInput(item, valid.cases[0].expected.json);
-      code = expectCode(() => publicmessage.parseAndVerify(channel, input, item.now_ms), item.expected_code);
+      code = expectCode(() => publicmessage.parseAndVerify(channel, input), item.expected_code);
     }
     return { name: `public-message/${item.name}`, code };
   });
@@ -363,7 +362,7 @@ function verifyForeignPublicMessage(foreign, expected) {
   for (let index = 0; index < foreign.cases.length; index += 1) {
     const item = valid.cases[index];
     const actual = foreign.cases[index];
-    const verified = publicmessage.parseAndVerify(item.channel, actual.json, item.now_ms);
+    const verified = publicmessage.parseAndVerify(item.channel, actual.json);
     const key = publicmessage.dedupKey(verified);
     assert.equal(actual.name, item.name);
     assert.equal(actual.json, expected.cases[index].json);
@@ -401,7 +400,7 @@ async function build() {
     body: { hash, locators: [hashrequest.newWebRTCSDPLocator()] },
   }, privateA);
   const publicJSON = textDecoder.decode(hashrequest.marshal(publicMessage));
-  const verifiedPublic = hashrequest.parseAndVerify(channels.HASH_REQUEST_CHANNEL, publicJSON, fixture.issued_at_ms + 500);
+  const verifiedPublic = hashrequest.parseAndVerify(channels.HASH_REQUEST_CHANNEL, publicJSON);
   assert.equal(verifiedPublic.signature, fixture.hash_request.signature);
   assert.equal(verifiedPublic.digest, fixture.hash_request.digest_hex);
 
@@ -425,7 +424,7 @@ async function build() {
   const envelope = await inbox.sealSigned(signedPrivate, privateA, channels.fixedRandom(fixed));
   const envelopeJSON = textDecoder.decode(inbox.marshalEnvelope(envelope));
   assert.deepEqual(JSON.parse(envelopeJSON), fixture.private_message.envelope);
-  const opened = await inbox.open(fixture.channel, envelopeJSON, privateB, fixture.issued_at_ms + 500);
+  const opened = await inbox.open(fixture.channel, envelopeJSON, privateB);
   assert.equal(opened.protocol, channels.WEBRTC_SIGNAL_PROTOCOL);
   assert.equal(opened.body.signal.type, "offer");
 
@@ -458,10 +457,10 @@ async function build() {
 async function verifyGo(path) {
   const foreign = JSON.parse(fs.readFileSync(path, "utf8"));
   const privateB = channels.parsePrivateKey(bytesFromHex(fixture.test_only_private_key_b_hex));
-  const publicMessage = hashrequest.parseAndVerify(channels.HASH_REQUEST_CHANNEL, foreign.hash_request.json, fixture.issued_at_ms + 500);
+  const publicMessage = hashrequest.parseAndVerify(channels.HASH_REQUEST_CHANNEL, foreign.hash_request.json);
   assert.equal(publicMessage.signature, fixture.hash_request.signature);
   assert.equal(publicMessage.digest, fixture.hash_request.digest_hex);
-  const opened = await inbox.open(fixture.channel, foreign.private_message.envelope_json, privateB, fixture.issued_at_ms + 500);
+  const opened = await inbox.open(fixture.channel, foreign.private_message.envelope_json, privateB);
   assert.equal(opened.signature, fixture.private_message.signature);
   assert.equal(opened.digest, fixture.private_message.digest_hex);
   assert.equal(opened.protocol, channels.WEBRTC_SIGNAL_PROTOCOL);

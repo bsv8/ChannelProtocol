@@ -72,8 +72,9 @@ bsvprice.02aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
 明确表示当前没有任何可用行情，订阅端收到后应清除已展示价格并进入等待/无报价状态。订阅端
 应按 `snapshot_at_ms` 忽略更旧或相同的快照，以抵抗网络乱序。
 
-公开消息仍遵守通用壳的 10 分钟最长有效期和 60 秒未来时钟偏差规则。`snapshot_at_ms`
-表达行情源生成时间，不能用接收端本地时间代替。
+公开消息仍遵守通用壳的 10 分钟最长有效期（结构约束）；是否把过期快照当作有效行情由
+调用方按自己的时钟与业务决定。`snapshot_at_ms` 表达行情源生成时间，不能用接收端本地
+时间代替。
 
 ## 5. 身份与转发
 

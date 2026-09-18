@@ -1,6 +1,6 @@
 # BSV8 Channel Protocol SDK
 
-当前发布项目包/API 版本：`0.5.0`。协议标识仍保持 `bsv8.*.v1`。
+当前发布项目包/API 版本：`0.6.0`。协议标识仍保持 `bsv8.*.v1`。
 
 ChannelProtocol（CP）是独立于 libp2p/SSP 的内容协议：
 
@@ -8,7 +8,9 @@ ChannelProtocol（CP）是独立于 libp2p/SSP 的内容协议：
 - SSP Wire 不重复携带身份公钥或业务签名；
 - CP 报文自己携带作者公钥、message_id、时间和签名；
 - libp2p/SSP 身份 A 可以代发 CP 作者 B 的报文；
-- CP 离开原 SSP 连接后仍可验签、过期检查、去重和关联。
+- CP 离开原 SSP 连接后仍可验签、去重和关联；
+- CP 只校验结构时间（时间字段合法、`issued_at_ms < expires_at_ms`、不超过协议上限）；
+  过期、未来时钟偏差和迟到消息是否接受由调用方决定。
 
 跨仓库边界与验收记录见
 [`SSP + CP 协议族消融设计`](./docs/SSP-CP协议族消融设计.md)和
@@ -40,8 +42,8 @@ npm package: bsv8-channel-protocol
 ```
 
 ```text
-go get github.com/bsv8/ChannelProtocol@v0.5.0
-npm install bsv8-channel-protocol@0.5.0
+go get github.com/bsv8/ChannelProtocol@v0.6.0
+npm install bsv8-channel-protocol@0.6.0
 ```
 
 CP Go module 和 TypeScript package 均不得依赖 SSP package。
@@ -136,5 +138,6 @@ cd typescript && npm ci && npm test && npm pack --dry-run
 cd .. && ./scripts/test-integration.sh
 ```
 
-`0.5.0` 已包含 BSV 价格频道协议、空快照语义、Go/TypeScript SDK 及对应测试；Go 使用 `v0.5.0`
-tag，TypeScript 使用 npm `0.5.0` 包。
+`0.6.0` 包含 BSV 价格频道协议、空快照语义、Go/TypeScript SDK 及对应测试，并移除 SDK 层
+对本地时钟的判断：过期、未来时钟偏差和迟到消息是否接受属于调用方边界。Go 使用 `v0.6.0` tag，
+TypeScript 使用 npm `0.6.0` 包。

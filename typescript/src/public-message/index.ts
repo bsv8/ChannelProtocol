@@ -29,7 +29,7 @@ export const PUBLIC_MESSAGE_SCOPE = "bsv8.public-message.v1" as const;
 export const PUBLIC_MESSAGE_MAX_LIFETIME_MS = 10 * 60 * 1000;
 
 /** 公开消息允许的发布时间未来偏差。 */
-export const MAX_FUTURE_SKEW_MS = 60 * 1000;
+
 
 /** 任意合法精确频道的待签名消息。 */
 export interface UnsignedPublicMessage {
@@ -106,10 +106,15 @@ export function marshal(message: SignedPublicMessage): Uint8Array {
   return new Uint8Array(result);
 }
 
-/** 严格解析并验签指定精确频道上的公开消息。 */
-export function parseAndVerify(channel: string, input: string | Uint8Array, nowMs: number): VerifiedPublicMessage {
+/**
+ * 严格解析并验签指定精确频道上的公开消息。
+ *
+ * 只校验与本地时钟无关的结构事实（时间字段合法、issued < expires、
+ * 有效期不超过协议上限）和签名；消息是否"过期"、是否接受迟到消息由
+ * 调用方依据自己的时钟与业务边界决定。
+ */
+export function parseAndVerify(channel: string, input: string | Uint8Array): VerifiedPublicMessage {
   validateChannel(channel);
-  const now = parseUnixMillis(nowMs, "now_ms");
   const value = parseStrictJSON(input);
   if (!isJSONObject(value)) throw protocolError(ERROR_CODES.INVALID_JSON, "公开消息根值必须是 object");
   requireObjectKeys(value, ["from_public_key", "message_id", "issued_at_ms", "expires_at_ms", "body", "signature"]);
@@ -123,10 +128,6 @@ export function parseAndVerify(channel: string, input: string | Uint8Array, nowM
     signature: parseSignature(stringField(value, "signature")),
   };
   validateUnsigned(message, true);
-  if (message.issued_at_ms > now && message.issued_at_ms - now > MAX_FUTURE_SKEW_MS) {
-    throw protocolError(ERROR_CODES.INVALID_TIME, "公开消息发布时间超出允许的未来时钟偏差");
-  }
-  if (now >= message.expires_at_ms) throw protocolError(ERROR_CODES.MESSAGE_EXPIRED, "公开消息已过期");
   const digest = signingDigest(message);
   verifyDigest(message.from_public_key, digest, message.signature);
   return verifiedPublicMessage({ ...message, digest: sha256HashFromBytes(digest) });

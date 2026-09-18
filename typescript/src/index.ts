@@ -36,7 +36,6 @@ export { canonicalizeJSON, canonicalizeValue, sha256 } from "./internal/jcs.js";
 export {
   PUBLIC_MESSAGE_SCOPE,
   PUBLIC_MESSAGE_MAX_LIFETIME_MS,
-  MAX_FUTURE_SKEW_MS,
 } from "./public-message/index.js";
 export type {
   UnsignedPublicMessage,

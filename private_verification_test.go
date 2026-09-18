@@ -44,7 +44,7 @@ func TestVerifySignedPrivateMessageAndTTL(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	verifiedPing, err := inbox.VerifySignedPrivateMessage(localPing, 1500)
+	verifiedPing, err := inbox.VerifySignedPrivateMessage(localPing)
 	if err != nil || !verifiedPing.IsVerified() {
 		t.Fatalf("本地 Ping 验签失败: %v", err)
 	}
@@ -65,7 +65,7 @@ func TestVerifySignedPrivateMessageAndTTL(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	verifiedPong, err := inbox.VerifySignedPrivateMessage(signedPong, 1500)
+	verifiedPong, err := inbox.VerifySignedPrivateMessage(signedPong)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -75,21 +75,23 @@ func TestVerifySignedPrivateMessageAndTTL(t *testing.T) {
 
 	badSignature := localPing
 	badSignature.Signature = channels.Signature{}
-	if _, err := inbox.VerifySignedPrivateMessage(badSignature, 1500); !errors.Is(err, channels.ErrInvalidSignature) {
+	if _, err := inbox.VerifySignedPrivateMessage(badSignature); !errors.Is(err, channels.ErrInvalidSignature) {
 		t.Fatalf("错误签名未返回 INVALID_SIGNATURE: %v", err)
 	}
 	wrongSender := localPing
 	wrongSender.FromPublicKey = publicB
-	if _, err := inbox.VerifySignedPrivateMessage(wrongSender, 1500); !errors.Is(err, channels.ErrInvalidSignature) {
+	if _, err := inbox.VerifySignedPrivateMessage(wrongSender); !errors.Is(err, channels.ErrInvalidSignature) {
 		t.Fatalf("错误发送者未返回 INVALID_SIGNATURE: %v", err)
 	}
 	badChannel := localPing
 	badChannel.Channel = "bsv8.inbox.invalid"
-	if _, err := inbox.VerifySignedPrivateMessage(badChannel, 1500); !errors.Is(err, channels.ErrInvalidChannel) {
+	if _, err := inbox.VerifySignedPrivateMessage(badChannel); !errors.Is(err, channels.ErrInvalidChannel) {
 		t.Fatalf("非法 channel 未返回 INVALID_CHANNEL: %v", err)
 	}
-	if _, err := inbox.VerifySignedPrivateMessage(localPing, 2000); !errors.Is(err, channels.ErrMessageExpired) {
-		t.Fatalf("now_ms == expires_at_ms 未返回 MESSAGE_EXPIRED: %v", err)
+	// 过期与未来时钟由调用方按自己的边界判断；SDK 不再用本地时钟拒绝它们，
+	// 只要结构时间合法、签名有效就应通过。
+	if _, err := inbox.VerifySignedPrivateMessage(localPing); err != nil {
+		t.Fatalf("结构合法的过期消息不应被 SDK 拒绝: %v", err)
 	}
 
 	futurePing, err := inbox.SignPrivateMessage(inbox.UnsignedPrivateMessage{
@@ -104,12 +106,12 @@ func TestVerifySignedPrivateMessageAndTTL(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := inbox.VerifySignedPrivateMessage(futurePing, 1000); !errors.Is(err, channels.ErrInvalidTime) {
-		t.Fatalf("超过未来时钟容差未返回 INVALID_TIME: %v", err)
+	if _, err := inbox.VerifySignedPrivateMessage(futurePing); err != nil {
+		t.Fatalf("结构合法的未来消息不应被 SDK 拒绝: %v", err)
 	}
 	tooLong := localPing
 	tooLong.ExpiresAtMs = tooLong.IssuedAtMs + ping.MaxLifetimeMs() + 1
-	if _, err := inbox.VerifySignedPrivateMessage(tooLong, 1500); !errors.Is(err, channels.ErrInvalidTime) {
+	if _, err := inbox.VerifySignedPrivateMessage(tooLong); !errors.Is(err, channels.ErrInvalidTime) {
 		t.Fatalf("超过 Ping TTL 未返回 INVALID_TIME: %v", err)
 	}
 
@@ -153,11 +155,11 @@ func TestVerifySignedPrivateMessageAndTTL(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	verifiedOffer, err := inbox.VerifySignedPrivateMessage(signedOffer, 1500)
+	verifiedOffer, err := inbox.VerifySignedPrivateMessage(signedOffer)
 	if err != nil {
 		t.Fatal(err)
 	}
-	verifiedAnswer, err := inbox.VerifySignedPrivateMessage(signedAnswer, 1500)
+	verifiedAnswer, err := inbox.VerifySignedPrivateMessage(signedAnswer)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -168,7 +170,7 @@ func TestVerifySignedPrivateMessageAndTTL(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	remoteAnswer, err := inbox.Open(channels.InboxChannel(publicA), mustMarshalEnvelope(t, answerEnvelope), privateA, 1500)
+	remoteAnswer, err := inbox.Open(channels.InboxChannel(publicA), mustMarshalEnvelope(t, answerEnvelope), privateA)
 	if err != nil {
 		t.Fatal(err)
 	}

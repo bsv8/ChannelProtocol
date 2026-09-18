@@ -185,13 +185,12 @@ export function signPrivateMessage(message: UnsignedPrivateMessage, privateKey: 
  * 该入口不执行解密；适用于发送方保留自己刚生成的 Ping，随后用
  * `validatePongRelation` 校验收到的 Pong。远端密文仍必须先经过 `open`。
  */
-export function verifySignedPrivateMessage(message: SignedPrivateMessage, nowMs: number): VerifiedPrivateMessage {
-  parseUnixMillis(nowMs, "now_ms");
+export function verifySignedPrivateMessage(message: SignedPrivateMessage): VerifiedPrivateMessage {
   validateUnsigned(message, true);
   parseSignature(message.signature);
   const digest = signingDigest(message);
   verifyDigestWithPublic(message.from_public_key, digest, message.signature);
-  validatePrivateTimes(message.issued_at_ms, message.expires_at_ms, nowMs, message.protocol, true);
+  validatePrivateTimes(message.issued_at_ms, message.expires_at_ms, message.protocol);
   const recipient = parseInboxChannel(message.channel, INBOX_CHANNEL_PREFIX);
   return verifiedPrivateMessage({
     channel: message.channel,
@@ -255,9 +254,14 @@ export async function signAndSeal(message: UnsignedPrivateMessage, privateKey: P
   return sealSigned(signPrivateMessage(message, privateKey), privateKey, source);
 }
 
-/** 解密、严格解析、时间检查并验证唯一私密消息签名。 */
-export async function open(channel: string, envelopeJSON: string | Uint8Array, recipientPrivateKey: PrivateKey | Uint8Array, nowMs: number): Promise<VerifiedPrivateMessage> {
-  parseUnixMillis(nowMs, "now_ms");
+/**
+ * 解密、严格解析并验证唯一私密消息签名。
+ *
+ * 它与本地时钟无关：不做过期或未来时钟判断，只校验结构时间
+ * （合法整数、issued < expires、有效期不超过子协议上限）和签名。
+ * 消息是否过期、是否接受迟到消息由调用方决定。
+ */
+export async function open(channel: string, envelopeJSON: string | Uint8Array, recipientPrivateKey: PrivateKey | Uint8Array): Promise<VerifiedPrivateMessage> {
   const envelope = parseEnvelope(channel, envelopeJSON);
   try {
     const recipient = parseInboxChannel(channel, INBOX_CHANNEL_PREFIX);
@@ -281,7 +285,7 @@ export async function open(channel: string, envelopeJSON: string | Uint8Array, r
           const message_id = parseMessageID(stringField(value, "message_id"));
           const issued_at_ms = parseUnixMillis(requireField(value, "issued_at_ms"), "issued_at_ms");
           const expires_at_ms = parseUnixMillis(requireField(value, "expires_at_ms"), "expires_at_ms");
-          validatePrivateTimes(issued_at_ms, expires_at_ms, nowMs, protocol, true);
+          validatePrivateTimes(issued_at_ms, expires_at_ms, protocol);
           const bodyValue = requireField(value, "body");
           const signature = parseSignature(stringField(value, "signature"));
           const digest = signingDigestRaw(channel, envelope.from_public_key, protocol, message_id, issued_at_ms, expires_at_ms, bodyValue);
@@ -298,7 +302,7 @@ export async function open(channel: string, envelopeJSON: string | Uint8Array, r
       clearBytes(shared);
     }
   } catch (error) {
-    if (error instanceof ChannelProtocolError && (hasCode(error, ERROR_CODES.MESSAGE_EXPIRED) || hasCode(error, ERROR_CODES.INVALID_TIME) || hasCode(error, ERROR_CODES.UNSUPPORTED_PROTOCOL))) throw error;
+    if (error instanceof ChannelProtocolError && (hasCode(error, ERROR_CODES.INVALID_TIME) || hasCode(error, ERROR_CODES.UNSUPPORTED_PROTOCOL))) throw error;
     throw protocolError(ERROR_CODES.OPEN_FAILED, "私密信封无法打开");
   }
 }
@@ -348,15 +352,15 @@ export function validateWebRTCRelation(offer: VerifiedPrivateMessage, message: V
 
 /**
  * 统一审查 WebRTC offer 与已验证 Hash 请求的跨协议关系。
- * session_id 是否已被本地使用仍由调用方状态存储负责。
+ *
+ * Hash 请求是否"过期"由调用方按自己的时钟与业务判断；这里只校验两边的
+ * 协议关系和签名结果。session_id 是否已被本地使用仍由调用方状态存储负责。
  */
-export function reviewOfferForHashRequest(hashRequest: VerifiedHashRequest, offer: VerifiedPrivateMessage, nowMs: number): SessionKey {
+export function reviewOfferForHashRequest(hashRequest: VerifiedHashRequest, offer: VerifiedPrivateMessage): SessionKey {
   if (!isVerifiedHashRequest(hashRequest) || !Object.isFrozen(hashRequest)) {
     throw protocolError(ERROR_CODES.INVALID_SIGNATURE, "Hash 请求不是 SDK 生成的已验证结果");
   }
   requireVerifiedPrivateMessage(offer);
-  const now = parseUnixMillis(nowMs, "now_ms");
-  if (now >= hashRequest.expires_at_ms) throw protocolError(ERROR_CODES.MESSAGE_EXPIRED, "引用的 Hash 请求已过期");
   if (!hashRequest.body.locators.some((locator) => locator.kind === "webrtc-sdp")) {
     throw protocolError(ERROR_CODES.INVALID_RELATION, "Hash 请求未声明 webrtc-sdp locator");
   }
@@ -429,7 +433,7 @@ function validateUnsigned(message: UnsignedPrivateMessage, withSignature: boolea
     if (!isPingBody(message.body)) throw protocolError(ERROR_CODES.INVALID_BODY, "protocol 与 Ping/Pong body 类型不一致");
     validatePingBody(message.body);
   }
-  validatePrivateTimes(message.issued_at_ms, message.expires_at_ms, 0, message.protocol, false);
+  validatePrivateTimes(message.issued_at_ms, message.expires_at_ms, message.protocol);
 }
 
 function validateSigned(message: SignedPrivateMessage, privateKey: PrivateKey | Uint8Array): void {
@@ -457,14 +461,12 @@ function signingDigestRaw(channel: string, fromPublicKey: PublicKey, protocol: s
   return sha256(canonicalizeValue({ scope: "bsv8.private-message.v1", channel, from_public_key: fromPublicKey, message: { protocol, message_id: messageId, issued_at_ms: issued, expires_at_ms: expires, body } }));
 }
 
-function validatePrivateTimes(issued: number, expires: number, now: number, protocol: string, checkCurrent: boolean): void {
+function validatePrivateTimes(issued: number, expires: number, protocol: string): void {
   parseUnixMillis(issued, "issued_at_ms");
   parseUnixMillis(expires, "expires_at_ms");
   if (issued >= expires) throw protocolError(ERROR_CODES.INVALID_TIME, "私密消息时间顺序不合法");
   const maxLifetime = privateMessageMaxLifetimeMs(protocol);
   if (expires - issued > maxLifetime) throw protocolError(ERROR_CODES.INVALID_TIME, "私密消息有效期超过子协议上限");
-  if (checkCurrent && issued > now && issued - now > 60 * 1000) throw protocolError(ERROR_CODES.INVALID_TIME, "私密消息发布时间超出本地时钟容差");
-  if (checkCurrent && now >= expires) throw protocolError(ERROR_CODES.MESSAGE_EXPIRED, "私密消息已过期");
 }
 
 function signDigestWithPrivate(privateKey: PrivateKey | Uint8Array, digest: Uint8Array): Signature {

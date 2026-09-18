@@ -16,8 +16,7 @@ import (
 )
 
 const (
-	maxLifetimeMs   int64 = 10 * 60 * 1000
-	maxFutureSkewMs int64 = 60 * 1000
+	maxLifetimeMs int64 = 10 * 60 * 1000
 )
 
 // LocatorKind 是公开 Hash 请求的连接位置类型。
@@ -183,12 +182,12 @@ func Marshal(message SignedMessage) ([]byte, error) {
 }
 
 // ParseAndVerify 严格解析公开消息，允许输入字段顺序不同，再按 JCS 验签。
-func ParseAndVerify(channel string, input []byte, nowMs int64) (VerifiedMessage, error) {
+//
+// 与通用公开消息一致：只校验结构时间（合法整数、issued < expires、有效期
+// 不超过协议上限）和签名，不使用本地时钟判断过期或未来偏差。
+func ParseAndVerify(channel string, input []byte) (VerifiedMessage, error) {
 	if channel != protocol.HashRequestChannel {
 		return VerifiedMessage{}, protocolerror.New(protocolerror.InvalidChannel, "公开 Hash 请求 channel 不合法")
-	}
-	if err := validateNow(nowMs); err != nil {
-		return VerifiedMessage{}, err
 	}
 	object, err := strictjson.ParseObject(input)
 	if err != nil {
@@ -203,12 +202,6 @@ func ParseAndVerify(channel string, input []byte, nowMs int64) (VerifiedMessage,
 	}
 	if err := validateUnsigned(message.UnsignedMessage); err != nil {
 		return VerifiedMessage{}, err
-	}
-	if message.IssuedAtMs > nowMs && message.IssuedAtMs-nowMs > maxFutureSkewMs {
-		return VerifiedMessage{}, protocolerror.New(protocolerror.InvalidTime, "公开消息发布时间超出允许的未来时钟偏差")
-	}
-	if nowMs >= message.ExpiresAtMs {
-		return VerifiedMessage{}, protocolerror.New(protocolerror.MessageExpired, "公开消息已过期")
 	}
 	digest, err := signingDigest(message.UnsignedMessage)
 	if err != nil {
@@ -497,13 +490,6 @@ func requiredString(object map[string]strictjson.JSONValue, field string) (strin
 		return "", protocolerror.New(protocolerror.InvalidBody, fmt.Sprintf("%s 必须是 string", field))
 	}
 	return result, nil
-}
-
-func validateNow(nowMs int64) error {
-	if nowMs < 0 || nowMs > 9_007_199_254_740_991 {
-		return protocolerror.New(protocolerror.InvalidTime, "now_ms 超出 safe integer")
-	}
-	return nil
 }
 
 func validatePrivateKey(privateKey encoding.PrivateKey) error {

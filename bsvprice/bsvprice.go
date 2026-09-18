@@ -206,12 +206,14 @@ func Marshal(message SignedMessage) ([]byte, error) {
 }
 
 // ParseAndVerify 严格解析指定价格频道上的消息并完成验签。
-func ParseAndVerify(channel string, input []byte, nowMs int64) (VerifiedMessage, error) {
+//
+// 过期与时钟判断由调用方决定；这里只校验结构时间和签名。
+func ParseAndVerify(channel string, input []byte) (VerifiedMessage, error) {
 	publisher, err := ParseChannel(channel)
 	if err != nil {
 		return VerifiedMessage{}, err
 	}
-	public, err := publicmessage.ParseAndVerify(channel, input, nowMs)
+	public, err := publicmessage.ParseAndVerify(channel, input)
 	if err != nil {
 		return VerifiedMessage{}, err
 	}

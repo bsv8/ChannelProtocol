@@ -159,7 +159,7 @@ func TestSharedDedupAndRelationsFixture(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	verifiedPublic, err := hashrequest.ParseAndVerify(publicInput.Channel, publicJSON, publicInput.IssuedAtMs+500)
+	verifiedPublic, err := hashrequest.ParseAndVerify(publicInput.Channel, publicJSON)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -204,7 +204,7 @@ func TestSharedDedupAndRelationsFixture(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	opened, err := inbox.Open(privateInput.Channel, envelopeJSON, privateB, privateInput.IssuedAtMs+500)
+	opened, err := inbox.Open(privateInput.Channel, envelopeJSON, privateB)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -307,7 +307,7 @@ func validateFixtureAck(t *testing.T, delivery inbox.VerifiedPrivateMessage, val
 	if err != nil {
 		return err
 	}
-	ackMessage, err := inbox.Open(envelope.Channel, envelopeJSON, recipientPrivate, delivery.IssuedAtMs()+500)
+	ackMessage, err := inbox.Open(envelope.Channel, envelopeJSON, recipientPrivate)
 	if err != nil {
 		return err
 	}

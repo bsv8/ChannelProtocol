@@ -343,11 +343,11 @@ func sharedInvalidResults(input fixture) ([]errorResult, error) {
 			if sealErr != nil {
 				return nil, sealErr
 			}
-			offerMessage, openErr := inbox.Open(offerEnvelope.Channel, mustMarshalEnvelope(offerEnvelope), privateB, 1500)
+			offerMessage, openErr := inbox.Open(offerEnvelope.Channel, mustMarshalEnvelope(offerEnvelope), privateB)
 			if openErr != nil {
 				return nil, openErr
 			}
-			answerMessage, openErr := inbox.Open(answerEnvelope.Channel, mustMarshalEnvelope(answerEnvelope), privateA, 1500)
+			answerMessage, openErr := inbox.Open(answerEnvelope.Channel, mustMarshalEnvelope(answerEnvelope), privateA)
 			if openErr != nil {
 				return nil, openErr
 			}
@@ -378,7 +378,7 @@ func sharedInvalidResults(input fixture) ([]errorResult, error) {
 			if keyErr != nil {
 				return nil, fmt.Errorf("inbox fixture %s 私钥无效: %w", item.Name, keyErr)
 			}
-			opened, openErr := inbox.Open(item.Channel, item.Envelope, privateKey, 1500)
+			opened, openErr := inbox.Open(item.Channel, item.Envelope, privateKey)
 			if openErr != nil {
 				itemErr = openErr
 			} else {
@@ -446,7 +446,7 @@ func canonicalizeJSONError(input []byte) error {
 }
 
 func hashRequestFixtureError(channel string, input []byte, nowMs int64) error {
-	_, err := hashrequest.ParseAndVerify(channel, input, nowMs)
+	_, err := hashrequest.ParseAndVerify(channel, input)
 	return err
 }
 

@@ -265,11 +265,11 @@ func TestSharedNamedInvalidFixtures(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			offerMessage, err := inbox.Open(offerEnvelope.Channel, mustMarshalEnvelope(t, offerEnvelope), privateB, 1500)
+			offerMessage, err := inbox.Open(offerEnvelope.Channel, mustMarshalEnvelope(t, offerEnvelope), privateB)
 			if err != nil {
 				t.Fatal(err)
 			}
-			answerMessage, err := inbox.Open(answerEnvelope.Channel, mustMarshalEnvelope(t, answerEnvelope), privateA, 1500)
+			answerMessage, err := inbox.Open(answerEnvelope.Channel, mustMarshalEnvelope(t, answerEnvelope), privateA)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -360,7 +360,7 @@ func TestSharedInboxCryptoFixtureAndInvalidCases(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	opened, err := inbox.Open(envelope.Channel, envelopeJSON, recipientPrivate, 1500)
+	opened, err := inbox.Open(envelope.Channel, envelopeJSON, recipientPrivate)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -461,7 +461,7 @@ func TestSharedInboxCryptoFixtureAndInvalidCases(t *testing.T) {
 			if keyErr != nil {
 				t.Fatal(keyErr)
 			}
-			opened, openErr := inbox.Open(channel, envelopeInput, privateKey, 1500)
+			opened, openErr := inbox.Open(channel, envelopeInput, privateKey)
 			if openErr != nil {
 				err = openErr
 			} else {
@@ -561,7 +561,7 @@ func canonicalizeError(input []byte) error {
 }
 
 func hashRequestError(channel string, input []byte, nowMs int64) error {
-	_, err := hashrequest.ParseAndVerify(channel, input, nowMs)
+	_, err := hashrequest.ParseAndVerify(channel, input)
 	return err
 }
 
@@ -586,7 +586,7 @@ func envelopeError(channel string, input []byte) error {
 }
 
 func openError(channel string, input []byte, privateKey channels.PrivateKey, nowMs int64) error {
-	_, err := inbox.Open(channel, input, privateKey, nowMs)
+	_, err := inbox.Open(channel, input, privateKey)
 	return err
 }
 

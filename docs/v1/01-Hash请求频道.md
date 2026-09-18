@@ -32,8 +32,9 @@ bsv8.hash.request.v1
 
 - `from_public_key`：CP Hash 请求作者，33 字节压缩 secp256k1 公钥；
 - `message_id`：CP 内容编号；
-- 有效期不得超过 10 分钟；
-- 验证时 `issued_at_ms` 不得晚于 `now_ms + 60_000`；超过未来时钟容差返回 `INVALID_TIME`；
+- 有效期不得超过 10 分钟（结构约束，与本地时钟无关）；
+- SDK 只校验结构时间（合法整数、`issued_at_ms < expires_at_ms`、有效期不超过上限）和签名；
+  消息是否过期、是否接受未来或迟到消息由调用方按自己的时钟与业务边界判断；
 - `body.hash`：目标文件字节的 SHA-256；
 - `body.locators`：至少一个，按数组顺序建议尝试；
 - `signature`：覆盖 channel、作者、message_id、时间和 body 的唯一 CP 签名。
@@ -51,8 +52,8 @@ libp2p/SSP 身份 A 提交作者 B 的 Hash 请求时：
 - 不检查 A == B；
 - Supplier 逐字节转发完整 Hash `content_json`。
 
-公开 Hash 可以由 Supplier 在扣费前完成全部 CP 结构、时间和签名验证；验证时同时检查过期和
-最多 60 秒的未来时钟偏差。
+公开 Hash 可以由 Supplier 在扣费前完成全部 CP 结构、时间字段和签名验证；SDK 不使用本地
+时钟判断过期，是否接受过期或未来消息属于调用方的业务边界。
 
 ## 4. 去重与 WebRTC
 

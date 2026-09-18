@@ -67,7 +67,7 @@ func TestHashAndInboxRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	verifiedPublic, err := hashrequest.ParseAndVerify(channels.HashRequestChannel, publicBytes, 1500)
+	verifiedPublic, err := hashrequest.ParseAndVerify(channels.HashRequestChannel, publicBytes)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -99,7 +99,7 @@ func TestHashAndInboxRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	opened, err := inbox.Open(envelope.Channel, envelopeBytes, recipientPrivate, 1500)
+	opened, err := inbox.Open(envelope.Channel, envelopeBytes, recipientPrivate)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -1,6 +1,7 @@
 # Channel Protocol V1
 
-当前发布项目包/API 版本为 `0.5.0`；线上 channel、protocol 和 envelope 版本仍为 V1。
+当前发布项目包/API 版本为 `0.6.0`；线上 channel、protocol 和 envelope 版本仍为 V1。
+SDK 只校验结构时间和签名，过期、未来时钟偏差和迟到消息是否接受由调用方决定。
 
 ## 1. 分层
 

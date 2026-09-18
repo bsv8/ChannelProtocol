@@ -59,7 +59,7 @@ func publicMessageExample() error {
 	if err != nil {
 		return err
 	}
-	verified, err := publicmessage.ParseAndVerify(channel, encoded, now)
+	verified, err := publicmessage.ParseAndVerify(channel, encoded)
 	if err != nil {
 		return err
 	}
@@ -100,7 +100,7 @@ func hashRequestExample() error {
 	if err != nil {
 		return err
 	}
-	verified, err := hashrequest.ParseAndVerify(channels.HashRequestChannel, encoded, time.Now().UnixMilli())
+	verified, err := hashrequest.ParseAndVerify(channels.HashRequestChannel, encoded)
 	if err != nil {
 		return err
 	}
@@ -158,7 +158,7 @@ func webRTCExample() error {
 	if err != nil {
 		return err
 	}
-	decoded, err := inbox.Open(envelope.Channel, envelopeJSON, recipientPrivate, now)
+	decoded, err := inbox.Open(envelope.Channel, envelopeJSON, recipientPrivate)
 	if err != nil {
 		return err
 	}
@@ -216,7 +216,7 @@ func deliverAckRetryExample() error {
 	if err != nil {
 		return err
 	}
-	received, err := inbox.Open(envelope.Channel, envelopeJSON, recipientPrivate, now)
+	received, err := inbox.Open(envelope.Channel, envelopeJSON, recipientPrivate)
 	if err != nil {
 		return err
 	}
@@ -244,7 +244,7 @@ func deliverAckRetryExample() error {
 	if err != nil {
 		return err
 	}
-	ackReceived, err := inbox.Open(ackEnvelope.Channel, ackJSON, senderPrivate, now)
+	ackReceived, err := inbox.Open(ackEnvelope.Channel, ackJSON, senderPrivate)
 	if err != nil {
 		return err
 	}

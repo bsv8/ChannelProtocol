@@ -192,7 +192,7 @@ func verifyForeignResult(input fixture, data []byte) error {
 		return err
 	}
 	publicJSON := []byte(foreign.HashRequest.JSON)
-	verifiedPublic, err := hashrequest.ParseAndVerify(channels.HashRequestChannel, publicJSON, input.IssuedAtMs+500)
+	verifiedPublic, err := hashrequest.ParseAndVerify(channels.HashRequestChannel, publicJSON)
 	if err != nil {
 		return fmt.Errorf("Go 无法验签 TypeScript 公开消息: %w", err)
 	}
@@ -200,7 +200,7 @@ func verifyForeignResult(input fixture, data []byte) error {
 		return errors.New("TypeScript 公开消息摘要或签名不匹配")
 	}
 	envelopeJSON := []byte(foreign.PrivateMessage.EnvelopeJSON)
-	opened, err := inbox.Open(input.Channel, envelopeJSON, privateB, input.IssuedAtMs+500)
+	opened, err := inbox.Open(input.Channel, envelopeJSON, privateB)
 	if err != nil {
 		return fmt.Errorf("Go 无法解密 TypeScript 私密信封: %w", err)
 	}
@@ -305,7 +305,7 @@ func build(input fixture) (result, error) {
 	if publicMessage.Signature.String() != input.HashRequest.Signature || publicMessage.SignedDigest().String() != input.HashRequest.DigestHex {
 		return result{}, errors.New("公开 Hash fixture 与 Go 构造结果不一致")
 	}
-	verifiedPublic, err := hashrequest.ParseAndVerify(channels.HashRequestChannel, publicJSON, input.IssuedAtMs)
+	verifiedPublic, err := hashrequest.ParseAndVerify(channels.HashRequestChannel, publicJSON)
 	if err != nil {
 		return result{}, err
 	}
@@ -355,7 +355,7 @@ func build(input fixture) (result, error) {
 	if !bytes.Equal(envelopeJSON, expectedEnvelope) {
 		return result{}, fmt.Errorf("私密信封 fixture 与 Go 构造结果不一致")
 	}
-	opened, err := inbox.Open(input.Channel, envelopeJSON, privateB, input.IssuedAtMs)
+	opened, err := inbox.Open(input.Channel, envelopeJSON, privateB)
 	if err != nil {
 		return result{}, err
 	}
@@ -428,7 +428,7 @@ func buildPublicMessageResult() (publicMessageResult, error) {
 		if err != nil {
 			return publicMessageResult{}, fmt.Errorf("public-message fixture %s marshal: %w", item.Name, err)
 		}
-		verified, err := publicmessage.ParseAndVerify(item.Channel, wire, item.Now)
+		verified, err := publicmessage.ParseAndVerify(item.Channel, wire)
 		if err != nil {
 			return publicMessageResult{}, fmt.Errorf("public-message fixture %s verify: %w", item.Name, err)
 		}
@@ -484,7 +484,7 @@ func publicMessageInvalidError(item publicMessageInvalidCase, base string) error
 		return publicmessage.CheckDigestConflict(existing, incoming)
 	}
 	if item.Operation == "parse_raw" {
-		_, err := publicmessage.ParseAndVerify(item.Channel, []byte(item.JSON), item.Now)
+		_, err := publicmessage.ParseAndVerify(item.Channel, []byte(item.JSON))
 		return err
 	}
 	if item.Operation == "generated" {
@@ -498,7 +498,7 @@ func publicMessageInvalidError(item publicMessageInvalidCase, base string) error
 	if err != nil {
 		return err
 	}
-	_, err = publicmessage.ParseAndVerify(channel, input, item.Now)
+	_, err = publicmessage.ParseAndVerify(channel, input)
 	return err
 }
 
@@ -542,13 +542,6 @@ func mutatePublicMessage(base, mutation string) ([]byte, error) {
 		}
 	case "lifetime_over_max":
 		if err := set("expires_at_ms", 601001); err != nil {
-			return nil, err
-		}
-	case "future_skew_over_max":
-		if err := set("issued_at_ms", 61001); err != nil {
-			return nil, err
-		}
-		if err := set("expires_at_ms", 661001); err != nil {
 			return nil, err
 		}
 	case "wrong_public_key":
@@ -597,15 +590,15 @@ func publicMessageGeneratedInvalidError(item publicMessageInvalidCase, base stri
 		if err != nil {
 			return err
 		}
-		_, err = publicmessage.ParseAndVerify(item.Channel, input, item.Now)
+		_, err = publicmessage.ParseAndVerify(item.Channel, input)
 		return err
 	case "too_deep":
 		input := []byte(strings.Repeat("[", strictjson.MaxJSONDepth+1) + "0" + strings.Repeat("]", strictjson.MaxJSONDepth+1))
-		_, err := publicmessage.ParseAndVerify(item.Channel, input, item.Now)
+		_, err := publicmessage.ParseAndVerify(item.Channel, input)
 		return err
 	case "too_many_nodes":
 		input := []byte("[" + strings.TrimSuffix(strings.Repeat("0,", strictjson.MaxJSONNodes), ",") + "]")
-		_, err := publicmessage.ParseAndVerify(item.Channel, input, item.Now)
+		_, err := publicmessage.ParseAndVerify(item.Channel, input)
 		return err
 	default:
 		return fmt.Errorf("unknown public-message generator %q", item.Generator)
@@ -626,7 +619,7 @@ func verifyForeignPublicMessage(foreign, expected publicMessageResult) error {
 	}
 	for index, actual := range foreign.Cases {
 		item := valid.Cases[index]
-		verified, err := publicmessage.ParseAndVerify(item.Channel, []byte(actual.JSON), item.Now)
+		verified, err := publicmessage.ParseAndVerify(item.Channel, []byte(actual.JSON))
 		if err != nil {
 			return fmt.Errorf("Go 无法验签 TypeScript public-message %s: %w", item.Name, err)
 		}
@@ -651,7 +644,7 @@ func invalidResults(input fixture) ([]errorResult, error) {
 		var code string
 		var err error
 		if item.Name == "unknown public field" {
-			_, err = hashrequest.ParseAndVerify(channels.HashRequestChannel, []byte(item.JSON), input.IssuedAtMs)
+			_, err = hashrequest.ParseAndVerify(channels.HashRequestChannel, []byte(item.JSON))
 		} else {
 			_, err = channels.CanonicalizeJSON([]byte(item.JSON))
 		}

@@ -68,8 +68,8 @@ func TestSharedPublicMessageValidFixture(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if publicmessage.MaxLifetimeMs() != 600_000 || publicmessage.MaxFutureSkewMs() != 60_000 {
-		t.Fatalf("公开消息时间常量不匹配: lifetime=%d skew=%d", publicmessage.MaxLifetimeMs(), publicmessage.MaxFutureSkewMs())
+	if publicmessage.MaxLifetimeMs() != 600_000 {
+		t.Fatalf("公开消息有效期常量不匹配: lifetime=%d", publicmessage.MaxLifetimeMs())
 	}
 
 	for _, item := range fixture.Cases {
@@ -103,7 +103,7 @@ func TestSharedPublicMessageValidFixture(t *testing.T) {
 			t.Fatalf("%s 签名或摘要不一致", item.Name)
 		}
 
-		verified, err := publicmessage.ParseAndVerify(item.Channel, wire, item.Now)
+		verified, err := publicmessage.ParseAndVerify(item.Channel, wire)
 		if err != nil {
 			t.Fatalf("%s ParseAndVerify: %v", item.Name, err)
 		}
@@ -144,7 +144,7 @@ func TestPublicMessageInvalidFixture(t *testing.T) {
 			var err error
 			switch item.Operation {
 			case "parse_raw":
-				_, err = publicmessage.ParseAndVerify(item.Channel, []byte(item.JSON), item.Now)
+				_, err = publicmessage.ParseAndVerify(item.Channel, []byte(item.JSON))
 			case "generated":
 				err = parseGeneratedInvalid(item, base)
 			default:
@@ -153,7 +153,7 @@ func TestPublicMessageInvalidFixture(t *testing.T) {
 				if item.ChannelRepeat != 0 {
 					channel += strings.Repeat("a", item.ChannelRepeat)
 				}
-				_, err = publicmessage.ParseAndVerify(channel, input, item.Now)
+				_, err = publicmessage.ParseAndVerify(channel, input)
 			}
 			if got := publicMessageErrorCode(err); got != item.Expected {
 				t.Fatalf("expected %s got %s (%v)", item.Expected, got, err)
@@ -218,7 +218,7 @@ func TestPublicMessageVerifiedSnapshotsAreDefensive(t *testing.T) {
 		t.Fatal("无法 JCS 化的 SignedMessage body 必须返回摘要错误")
 	}
 
-	verified, err := publicmessage.ParseAndVerify("bsv8.public.snapshot.v1", originalWire, 1500)
+	verified, err := publicmessage.ParseAndVerify("bsv8.public.snapshot.v1", originalWire)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -304,9 +304,6 @@ func mutatePublicMessage(t *testing.T, base, mutation string) []byte {
 		set("issued_at_ms", 2000)
 	case "lifetime_over_max":
 		set("expires_at_ms", 601001)
-	case "future_skew_over_max":
-		set("issued_at_ms", 61001)
-		set("expires_at_ms", 661001)
 	case "wrong_public_key":
 		set("from_public_key", "02c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5")
 	case "wrong_signature":
@@ -345,15 +342,15 @@ func parseGeneratedInvalid(item publicMessageInvalidCase, base string) error {
 		if err != nil {
 			return err
 		}
-		_, err = publicmessage.ParseAndVerify(item.Channel, input, item.Now)
+		_, err = publicmessage.ParseAndVerify(item.Channel, input)
 		return err
 	case "too_deep":
 		input := []byte(strings.Repeat("[", strictjson.MaxJSONDepth+1) + "0" + strings.Repeat("]", strictjson.MaxJSONDepth+1))
-		_, err := publicmessage.ParseAndVerify(item.Channel, input, item.Now)
+		_, err := publicmessage.ParseAndVerify(item.Channel, input)
 		return err
 	case "too_many_nodes":
 		input := []byte("[" + strings.TrimSuffix(strings.Repeat("0,", strictjson.MaxJSONNodes), ",") + "]")
-		_, err := publicmessage.ParseAndVerify(item.Channel, input, item.Now)
+		_, err := publicmessage.ParseAndVerify(item.Channel, input)
 		return err
 	default:
 		return fmt.Errorf("unknown invalid generator %q", item.Generator)

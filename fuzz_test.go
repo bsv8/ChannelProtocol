@@ -22,7 +22,7 @@ func FuzzHashRequestParser(f *testing.F) {
 	f.Add([]byte(`{}`))
 	f.Add([]byte(`{"from_public_key":"bad"}`))
 	f.Fuzz(func(t *testing.T, input []byte) {
-		_, _ = hashrequest.ParseAndVerify(channels.HashRequestChannel, input, 0)
+		_, _ = hashrequest.ParseAndVerify(channels.HashRequestChannel, input)
 	})
 }
 

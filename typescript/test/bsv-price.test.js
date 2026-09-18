@@ -33,7 +33,7 @@ test("BSV 价格频道和多市场快照可以签名、序列化并验签", () =
   assert.equal(new TextDecoder().decode(wire), `{"body":{"markets":{"gate":{"bsvcny":"321.85","bsvusdt":"45.1200"},"okx":{"bsvusdt":"45.0900"}},"protocol":"bsv8.bsv-price.v1","snapshot_at_ms":1000},"expires_at_ms":2000,"from_public_key":"031b84c5567b126440995d3ed5aaba0565d71e1834604819ff9c17f5e9d5dd078f","issued_at_ms":1000,"message_id":"AgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgI","signature":"MEQCIF3iRwrJqHm9iBVIbBsp5_tgTANil1ed2Zj9GjdcUyioAiBOr0mkhWwROWoenKE5vq1v6SnCvE7UFnhOMd0sJDRh7g"}`);
   assert.equal(bsvprice.signedDigest(signed), "fc19ee6bfbc7c15720da52bacca8cea912c4a2e34b2484755b9f29c7ee844104");
   const channel = bsvprice.bsvPriceChannel(publicKey);
-  const verified = bsvprice.parseAndVerify(channel, wire, 1500);
+  const verified = bsvprice.parseAndVerify(channel, wire);
 
   assert.equal(channel, `bsvprice.${publicKey}`);
   assert.equal(bsvprice.parseBSVPriceChannel(channel), publicKey);

@@ -36,9 +36,9 @@ import { verifySignedPrivateMessage, type SignedPrivateMessage } from "bsv8-chan
 declare const publicMessage: UnsignedPublicMessage;
 declare const publicKey: Parameters<typeof sign>[1];
 const signed = sign(publicMessage, publicKey);
-const verified = parseAndVerify(publicMessage.channel, marshal(signed), publicMessage.issued_at_ms);
+const verified = parseAndVerify(publicMessage.channel, marshal(signed));
 declare const privateMessage: SignedPrivateMessage;
-const localVerified = verifySignedPrivateMessage(privateMessage, publicMessage.issued_at_ms);
+const localVerified = verifySignedPrivateMessage(privateMessage);
 void verified;
 void localVerified;
 `);

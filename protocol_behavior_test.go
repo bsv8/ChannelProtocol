@@ -50,7 +50,7 @@ func TestProtocolErrorCodesAndSecurityBoundaries(t *testing.T) {
 	if _, err := channels.CanonicalizeValue(map[string]any{"bad": string([]byte{0xff})}); !errors.Is(err, channels.ErrInvalidJSON) {
 		t.Fatalf("非法 UTF-8 值错误码错误: %v", err)
 	}
-	if _, err := hashrequest.ParseAndVerify(channels.HashRequestChannel, []byte(`{"unknown":1}`), 0); !errors.Is(err, channels.ErrUnknownField) {
+	if _, err := hashrequest.ParseAndVerify(channels.HashRequestChannel, []byte(`{"unknown":1}`)); !errors.Is(err, channels.ErrUnknownField) {
 		t.Fatalf("公开入口错误码错误: %v", err)
 	}
 	if _, err := inbox.ParseEnvelope(channels.InboxChannelPrefix+"bad", []byte(`{}`)); !errors.Is(err, channels.ErrInvalidChannel) {
@@ -85,11 +85,11 @@ func TestWebRTCRelationAndAppAckRelation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	openOffer, err := inbox.Open(offerEnvelope.Channel, mustMarshalEnvelope(t, offerEnvelope), privateB, 1500)
+	openOffer, err := inbox.Open(offerEnvelope.Channel, mustMarshalEnvelope(t, offerEnvelope), privateB)
 	if err != nil {
 		t.Fatal(err)
 	}
-	openAnswer, err := inbox.Open(answerEnvelope.Channel, mustMarshalEnvelope(t, answerEnvelope), privateA, 1500)
+	openAnswer, err := inbox.Open(answerEnvelope.Channel, mustMarshalEnvelope(t, answerEnvelope), privateA)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -100,7 +100,7 @@ func TestWebRTCRelationAndAppAckRelation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	wrongAnswer, err := inbox.Open(wrongAnswerEnvelope.Channel, mustMarshalEnvelope(t, wrongAnswerEnvelope), privateB, 1500)
+	wrongAnswer, err := inbox.Open(wrongAnswerEnvelope.Channel, mustMarshalEnvelope(t, wrongAnswerEnvelope), privateB)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -120,7 +120,7 @@ func TestWebRTCRelationAndAppAckRelation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	deliverMessage, err := inbox.Open(deliverEnvelope.Channel, mustMarshalEnvelope(t, deliverEnvelope), privateB, 1500)
+	deliverMessage, err := inbox.Open(deliverEnvelope.Channel, mustMarshalEnvelope(t, deliverEnvelope), privateB)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -128,7 +128,7 @@ func TestWebRTCRelationAndAppAckRelation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	ackMessage, err := inbox.Open(ackEnvelope.Channel, mustMarshalEnvelope(t, ackEnvelope), privateA, 1500)
+	ackMessage, err := inbox.Open(ackEnvelope.Channel, mustMarshalEnvelope(t, ackEnvelope), privateA)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -143,7 +143,7 @@ func TestWebRTCRelationAndAppAckRelation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	badAckMessage, err := inbox.Open(badAckEnvelope.Channel, mustMarshalEnvelope(t, badAckEnvelope), privateB, 1500)
+	badAckMessage, err := inbox.Open(badAckEnvelope.Channel, mustMarshalEnvelope(t, badAckEnvelope), privateB)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -192,12 +192,12 @@ func TestInboxOpenFailureIsUniform(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := inbox.Open(envelope.Channel, envelopeJSON, privateA, 1500); !errors.Is(err, channels.ErrOpenFailed) {
+	if _, err := inbox.Open(envelope.Channel, envelopeJSON, privateA); !errors.Is(err, channels.ErrOpenFailed) {
 		t.Fatalf("收件者私钥不匹配未统一为 OPEN_FAILED: %v", err)
 	}
 	tampered := append([]byte(nil), envelopeJSON...)
 	tampered[len(tampered)-3] ^= 1
-	if _, err := inbox.Open(envelope.Channel, tampered, privateB, 1500); !errors.Is(err, channels.ErrOpenFailed) {
+	if _, err := inbox.Open(envelope.Channel, tampered, privateB); !errors.Is(err, channels.ErrOpenFailed) {
 		t.Fatalf("tag/密文篡改未统一为 OPEN_FAILED: %v", err)
 	}
 }
@@ -232,11 +232,11 @@ func TestPingPongRoundTripAndRelation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	verifiedPing, err := inbox.Open(pingEnvelope.Channel, mustMarshalEnvelope(t, pingEnvelope), privateB, 1500)
+	verifiedPing, err := inbox.Open(pingEnvelope.Channel, mustMarshalEnvelope(t, pingEnvelope), privateB)
 	if err != nil {
 		t.Fatal(err)
 	}
-	verifiedPong, err := inbox.Open(pongEnvelope.Channel, mustMarshalEnvelope(t, pongEnvelope), privateA, 1500)
+	verifiedPong, err := inbox.Open(pongEnvelope.Channel, mustMarshalEnvelope(t, pongEnvelope), privateA)
 	if err != nil {
 		t.Fatal(err)
 	}

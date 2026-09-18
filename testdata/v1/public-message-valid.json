@@ -39,7 +39,7 @@
       }
     },
     {
-      "name": "maximum future clock skew",
+      "name": "future issued time with valid lifetime",
       "channel": "bsv8.public.future.v1",
       "issued_at_ms": 61000,
       "expires_at_ms": 661000,

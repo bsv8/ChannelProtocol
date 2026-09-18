@@ -22,7 +22,7 @@ func Example() {
 		Body:          map[string]any{"kind": "demo", "value": 1},
 	}, privateKey)
 	wire, _ := publicmessage.Marshal(signed)
-	verified, _ := publicmessage.ParseAndVerify("bsv8.public.example.v1", wire, 1500)
+	verified, _ := publicmessage.ParseAndVerify("bsv8.public.example.v1", wire)
 	fmt.Println(verified.IsVerified())
 	// Output: true
 }

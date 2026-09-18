@@ -197,10 +197,10 @@ export function marshal(message: SignedBSVPriceMessage): Uint8Array {
   });
 }
 
-/** 严格解析指定价格频道上的消息并完成验签。 */
-export function parseAndVerify(channelName: string, input: string | Uint8Array, nowMs: number): VerifiedBSVPriceMessage {
+/** 严格解析指定价格频道上的消息并完成验签；过期判断由调用方负责。 */
+export function parseAndVerify(channelName: string, input: string | Uint8Array): VerifiedBSVPriceMessage {
   const publisher = parseBSVPriceChannel(channelName);
-  const message = parsePublicMessage(channelName, input, nowMs);
+  const message = parsePublicMessage(channelName, input);
   if (message.from_public_key !== publisher) {
     throw protocolError(ERROR_CODES.IDENTITY_MISMATCH, "BSV 价格频道公钥与消息作者不一致");
   }
