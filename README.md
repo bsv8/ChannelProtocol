@@ -31,6 +31,7 @@ ChannelProtocol（CP）是独立于 libp2p/SSP 的内容协议：
 | `bsv8.webrtc.signal.v1` | `webrtcsignal` | `./webrtc-signal` | SDP/ICE body |
 | `bsv8.message.v1` | `appmessage` | `./app-message` | Deliver/ACK body |
 | `bsv8.ping.v1` | `ping` | `./ping` | Ping/Pong body |
+| `bsv8.bbs.quote.v1` | `bbsquote` | `./bbs-quote` | 论坛 post/reply/like/dislike 报价 ask/answer body |
 
 协议说明见 [docs/v1](./docs/v1/README.md)，机器清单见 [protocols.json](./protocols.json)。
 

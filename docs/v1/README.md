@@ -110,6 +110,7 @@ AES-GCM tag 是密文完整性标签，不是第二个业务签名。
 | `bsv8.webrtc.signal.v1` | offer/answer/ICE |
 | `bsv8.message.v1` | Deliver/ACK |
 | `bsv8.ping.v1` | Ping/Pong |
+| `bsv8.bbs.quote.v1` | 论坛 post/reply/like/dislike 四个价格分量的 ask/answer 报价 |
 
 子协议只定义 body，不重复公钥、message_id、时间或签名。解密后必须先按 `protocol`
 分派，不能从 body 字段猜测类型。
@@ -129,9 +130,10 @@ Inbox 使用长期 secp256k1 ECDH、HKDF-SHA256 和 AES-256-GCM，不承诺前�
 
 - [Hash 请求频道](./01-Hash请求频道.md)
 - [私密收件箱](./02-私密收件箱.md)
-- [WebRTC SDP](./03-WebRTC-SDP子协议.md)
-- [应用消息与 ACK](./04-应用消息子协议.md)
-- [Ping/Pong](./05-Ping-Pong子协议.md)
+- [WebRTC SDP](./inbox/02-WebRTC-SDP子协议.md)
+- [应用消息与 ACK](./inbox/01-应用消息子协议.md)
+- [Ping/Pong](./inbox/03-Ping-Pong子协议.md)
 - [通用公开消息](./06-通用公开消息.md)
 - [BSV 价格频道](./07-BSV价格频道.md)
+- [论坛报价子协议](./inbox/04-bbs/)
 - [跨仓库消融设计](../SSP-CP协议族消融设计.md)

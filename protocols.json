@@ -57,6 +57,14 @@
       "description_zh": "Ping 和 Pong 私密连通性子协议",
       "go_package": "ping",
       "typescript_export": "./ping"
+    },
+    {
+      "document": "docs/v1/inbox/04-bbs/",
+      "kind": "inbox_subprotocol",
+      "identifier": "bsv8.bbs.quote.v1",
+      "description_zh": "论坛 post/reply/like/dislike 四个价格分量的 ask/answer 报价，CBOR 签名绑定本次 ask、收款公钥和最后区块高度",
+      "go_package": "bbsquote",
+      "typescript_export": "./bbs-quote"
     }
   ]
 }
